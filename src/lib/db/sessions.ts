@@ -44,6 +44,15 @@ export async function completeSession(sessionId: number): Promise<void> {
 	});
 }
 
+export async function setActiveTaskForSession(
+	sessionId: number,
+	taskId: number
+): Promise<void> {
+	await db.sessions.update(sessionId, {
+		activeTaskId: taskId
+	});
+}
+
 export async function getSessionHistory(
 	limit: number = 30
 ): Promise<(RoutineSession & { routineTitle: string })[]> {

@@ -10,6 +10,7 @@
 		syncTaskProgressForSession,
 		getTaskProgressForSession,
 		updateTaskProgress,
+		setActiveTaskForSession,
 		startSession,
 		completeSession
 	} from '$lib/db/sessions';
@@ -70,6 +71,13 @@
 			}
 
 			await refreshTaskList();
+
+			// Ensure session has an activeTaskId persisted
+			if (session && !session.activeTaskId && taskItems.length > 0 && activeTaskIndex >= 0) {
+				const activeId = taskItems[activeTaskIndex].task.id!;
+				await setActiveTaskForSession(session.id!, activeId);
+				session.activeTaskId = activeId;
+			}
 		} catch (err) {
 			console.error('Failed to load session:', err);
 		} finally {
@@ -102,10 +110,17 @@
 			notifyRoutineComplete(routine?.title ?? 'Routine');
 		}
 
-		// If no task is selected yet, default to first pending or 0
+		// If no task is selected yet, restore from session.activeTaskId if present, else first pending or 0
 		if (activeTaskIndex < 0 || activeTaskIndex >= taskItems.length) {
-			const firstPending = taskItems.findIndex((t) => t.progress.status !== 'completed');
-			activeTaskIndex = firstPending >= 0 ? firstPending : 0;
+			let targetIndex = -1;
+			const savedActiveTaskId = session?.activeTaskId;
+			if (savedActiveTaskId) {
+				targetIndex = taskItems.findIndex((t) => t.task.id === savedActiveTaskId);
+			}
+			if (targetIndex < 0) {
+				targetIndex = taskItems.findIndex((t) => t.progress.status !== 'completed');
+			}
+			activeTaskIndex = targetIndex >= 0 ? targetIndex : 0;
 		}
 
 		// Load active task into timer
@@ -132,6 +147,13 @@
 
 		activeTaskIndex = index;
 		const item = taskItems[index];
+
+		// Persist the active task so navigating away and returning restores this task
+		if (session?.id && item?.task?.id) {
+			await setActiveTaskForSession(session.id, item.task.id);
+			session.activeTaskId = item.task.id;
+		}
+
 		await loadTask(
 			item.progress.id!,
 			item.task.id!,
@@ -157,6 +179,11 @@
 		);
 		if (nextPending >= 0) {
 			activeTaskIndex = nextPending;
+			const nextItem = taskItems[nextPending];
+			if (session?.id && nextItem?.task?.id) {
+				await setActiveTaskForSession(session.id, nextItem.task.id);
+				session.activeTaskId = nextItem.task.id;
+			}
 		}
 		await refreshTaskList();
 	}

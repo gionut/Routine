@@ -35,6 +35,7 @@ export interface RoutineSession {
 	status: 'pending' | 'in-progress' | 'completed' | 'skipped';
 	startedAt?: Date;
 	completedAt?: Date;
+	activeTaskId?: number;
 }
 
 export interface TaskProgress {

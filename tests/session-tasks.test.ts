@@ -8,7 +8,8 @@ import {
 	getOrCreateTodaySession,
 	syncTaskProgressForSession,
 	getTaskProgressForSession,
-	updateTaskProgress
+	updateTaskProgress,
+	setActiveTaskForSession
 } from '../src/lib/db/sessions.js';
 
 test('Session: routine with 3 tasks has all 3 tasks in session', async () => {
@@ -156,3 +157,35 @@ test('Session: multiple routines in total maintain strict task isolation', async
 		['R3 Task 1']
 	);
 });
+
+test('Session: switching tasks persists activeTaskId across session re-entries', async () => {
+	const routineId = await createRoutine({
+		title: 'Workout',
+		scheduleType: 'daily',
+		isActive: true
+	});
+
+	const t1 = await addTask({ routineId, title: 'Pushups', duration: 300, linkType: 'none' });
+	const t2 = await addTask({ routineId, title: 'Pullups', duration: 300, linkType: 'none' });
+	const t3 = await addTask({ routineId, title: 'Squats', duration: 300, linkType: 'none' });
+
+	const session = await getOrCreateTodaySession(routineId);
+	await syncTaskProgressForSession(session.id!, routineId);
+
+	// User switches active task to Task 3 (Squats)
+	await setActiveTaskForSession(session.id!, t3);
+
+	// User navigates away to routines home, then comes back
+	const reloadedSession = await getOrCreateTodaySession(routineId);
+	assert.strictEqual(reloadedSession.activeTaskId, t3, 'Reloaded session must remember activeTaskId is Task 3');
+
+	// Simulate session loader picking active task:
+	const taskItems = await getTaskProgressForSession(reloadedSession.id!);
+	let targetIndex = -1;
+	if (reloadedSession.activeTaskId) {
+		targetIndex = taskItems.findIndex((t) => t.task.id === reloadedSession.activeTaskId);
+	}
+	assert.strictEqual(targetIndex, 2, 'Task 3 must be the active task index on re-entry');
+	assert.strictEqual(taskItems[targetIndex].task.title, 'Squats');
+});
+

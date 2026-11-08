@@ -15,6 +15,7 @@
 		session: RoutineSession;
 		totalDuration: number;
 		completedTasks: number;
+		activeTask?: Task;
 	}
 
 	let todayRoutines = $state<TodayRoutine[]>([]);
@@ -54,7 +55,19 @@
 					(p) => p.status === 'completed'
 				).length;
 
-				items.push({ routine, tasks, session, totalDuration, completedTasks });
+				// Determine active task (from session.activeTaskId or first non-completed task)
+				let activeTask: Task | undefined;
+				if (session.activeTaskId) {
+					activeTask = tasks.find((t) => t.id === session.activeTaskId);
+				}
+				if (!activeTask && tasks.length > 0) {
+					const completedTaskIds = new Set(
+						progressEntries.filter((p) => p.status === 'completed').map((p) => p.taskId)
+					);
+					activeTask = tasks.find((t) => !completedTaskIds.has(t.id!)) ?? tasks[0];
+				}
+
+				items.push({ routine, tasks, session, totalDuration, completedTasks, activeTask });
 			}
 
 			todayRoutines = items;
@@ -117,6 +130,13 @@
 							{item.tasks.length} {item.tasks.length === 1 ? 'task' : 'tasks'} · {formatDuration(item.totalDuration)}
 						</span>
 					</div>
+
+					{#if item.activeTask && item.session.status !== 'completed'}
+						<div class="active-task-pill">
+							<span class="active-dot">▶</span>
+							<span class="active-task-title label-medium">{item.activeTask.title}</span>
+						</div>
+					{/if}
 
 					<div class="card-progress">
 						<div class="progress-bar">
@@ -228,6 +248,26 @@
 
 	.task-count {
 		color: var(--md-sys-color-on-surface-variant);
+	}
+
+	.active-task-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 10px;
+		background-color: var(--md-sys-color-surface-container);
+		border-radius: var(--md-sys-shape-corner-small);
+		align-self: flex-start;
+	}
+
+	.active-dot {
+		font-size: 0.75rem;
+		color: var(--md-sys-color-primary);
+	}
+
+	.active-task-title {
+		color: var(--md-sys-color-on-surface);
+		font-weight: 500;
 	}
 
 	.card-progress {
