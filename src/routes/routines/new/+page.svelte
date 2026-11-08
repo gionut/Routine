@@ -4,6 +4,7 @@
 	import { addTask } from '$lib/db/tasks';
 	import { saveStoredFile } from '$lib/db/files';
 	import { minutesToSeconds } from '$lib/utils/time';
+	import { PRESET_APPS, buildAppIntentUrl, getPresetAppById, type PresetApp } from '$lib/constants/apps';
 	import type { Routine, Task } from '$lib/db/types';
 
 	type ScheduleType = Routine['scheduleType'];
@@ -19,6 +20,7 @@
 		fileId: number | null;
 		fileName: string | null;
 		fileSize: number | null;
+		appId?: string;
 		selectedFile: File | null;
 	}
 
@@ -50,6 +52,7 @@
 			fileId: null,
 			fileName: null,
 			fileSize: null,
+			appId: 'kindle',
 			selectedFile: null
 		});
 	}
@@ -112,14 +115,24 @@
 			for (const task of tasks) {
 				if (!task.title.trim()) continue;
 
+				let finalLinkUrl: string | undefined = undefined;
 				const linkMeta: Record<string, unknown> = {};
+
 				if ((task.linkType === 'url' || task.linkType === 'intent') && task.linkUrl) {
+					finalLinkUrl = task.linkUrl;
 					if (isYouTubeUrl(task.linkUrl) && task.ytTimestamp !== null && task.ytTimestamp > 0) {
 						linkMeta.ytTimestamp = task.ytTimestamp;
 					}
 					if (isPdfUrl(task.linkUrl) && task.pdfPage !== null && task.pdfPage > 0) {
 						linkMeta.pdfPage = task.pdfPage;
 					}
+				} else if (task.linkType === 'app') {
+					const app = getPresetAppById(task.appId || 'kindle') || PRESET_APPS[0];
+					linkMeta.appId = app.id;
+					linkMeta.appName = app.name;
+					linkMeta.appIcon = app.icon;
+					linkMeta.packageName = app.packageName;
+					finalLinkUrl = buildAppIntentUrl(app);
 				} else if (task.linkType === 'file') {
 					let fileId = task.fileId;
 					if (task.selectedFile) {
@@ -140,7 +153,7 @@
 					title: task.title.trim(),
 					duration: minutesToSeconds(task.durationMinutes),
 					linkType: task.linkType,
-					linkUrl: task.linkType === 'url' || task.linkType === 'intent' ? task.linkUrl : undefined,
+					linkUrl: finalLinkUrl,
 					linkMeta: Object.keys(linkMeta).length > 0 ? linkMeta : undefined
 				});
 			}
@@ -256,17 +269,48 @@
 				<div class="field">
 					<span class="body-medium field-hint">Link Type</span>
 					<div class="link-type-group">
-						{#each [['none', 'None'], ['url', 'URL'], ['file', 'PDF File'], ['intent', 'Intent']] as [value, label]}
+						{#each [['none', 'None'], ['url', 'URL'], ['file', 'PDF File'], ['app', 'App']] as [value, label]}
 							<button
+								type="button"
 								class="segment-btn small"
 								class:selected={task.linkType === value}
-								onclick={() => task.linkType = value as Task['linkType']}
+								onclick={() => {
+									task.linkType = value as Task['linkType'];
+									if (value === 'app' && !task.appId) {
+										task.appId = 'kindle';
+										if (!task.title.trim()) task.title = 'Amazon Kindle';
+									}
+								}}
 							>
 								{label}
 							</button>
 						{/each}
 					</div>
 				</div>
+
+				{#if task.linkType === 'app'}
+					<div class="field">
+						<span class="body-medium field-hint">Select Android App to Launch</span>
+						<div class="app-chips-grid">
+							{#each PRESET_APPS as app (app.id)}
+								<button
+									type="button"
+									class="app-chip"
+									class:selected={task.appId === app.id}
+									onclick={() => {
+										task.appId = app.id;
+										if (!task.title.trim() || PRESET_APPS.some((p) => p.name === task.title.trim())) {
+											task.title = app.name;
+										}
+									}}
+								>
+									<span class="app-chip-icon">{app.icon}</span>
+									<span class="app-chip-name">{app.name}</span>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				{#if task.linkType === 'file'}
 					<div class="field">
@@ -504,6 +548,42 @@
 
 	.file-size {
 		color: var(--md-sys-color-on-surface-variant);
+	}
+
+	.app-chips-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 4px;
+	}
+
+	.app-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 14px;
+		border: 1px solid var(--md-sys-color-outline);
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-surface);
+		color: var(--md-sys-color-on-surface);
+		font: var(--md-sys-typescale-label-large);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.app-chip:hover {
+		background-color: var(--md-sys-color-surface-container);
+	}
+
+	.app-chip.selected {
+		border-color: var(--md-sys-color-primary);
+		background-color: var(--md-sys-color-primary-container);
+		color: var(--md-sys-color-on-primary-container);
+		font-weight: 600;
+	}
+
+	.app-chip-icon {
+		font-size: 1.2rem;
 	}
 
 	/* Day chips */

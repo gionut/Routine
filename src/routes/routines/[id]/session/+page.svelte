@@ -413,10 +413,14 @@
 						</span>
 					</div>
 
-					{#if taskItems[activeTaskIndex].task.linkType !== 'none' && (taskItems[activeTaskIndex].task.linkUrl || taskItems[activeTaskIndex].task.linkType === 'file')}
+					{#if taskItems[activeTaskIndex].task.linkType !== 'none' && (taskItems[activeTaskIndex].task.linkUrl || taskItems[activeTaskIndex].task.linkType === 'file' || taskItems[activeTaskIndex].task.linkType === 'app')}
 						<div class="link-actions">
 							<button class="link-btn" onclick={handleOpenLink}>
-								🔗 Open {describeLinkType(taskItems[activeTaskIndex].task)}
+								{#if taskItems[activeTaskIndex].task.linkType === 'app'}
+									{taskItems[activeTaskIndex].task.linkMeta?.appIcon ?? '📱'} Open {taskItems[activeTaskIndex].task.linkMeta?.appName ?? 'App'}
+								{:else}
+									🔗 Open {describeLinkType(taskItems[activeTaskIndex].task)}
+								{/if}
 							</button>
 
 							{#if isYouTube(taskItems[activeTaskIndex].task) || isPdf(taskItems[activeTaskIndex].task)}

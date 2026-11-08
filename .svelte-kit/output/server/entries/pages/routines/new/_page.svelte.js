@@ -6,6 +6,50 @@ import "@sveltejs/kit/internal/server";
 import "../../../../chunks/root.js";
 import "../../../../chunks/state.svelte.js";
 import "../../../../chunks/database.js";
+const PRESET_APPS = [
+  {
+    id: "kindle",
+    name: "Amazon Kindle",
+    icon: "📖",
+    packageName: "com.amazon.kindle",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.amazon.kindle"
+  },
+  {
+    id: "bible",
+    name: "YouVersion Bible",
+    icon: "✝️",
+    packageName: "com.sirma.mobile.bible.android",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.sirma.mobile.bible.android"
+  },
+  {
+    id: "groundnews",
+    name: "Ground News",
+    icon: "📰",
+    packageName: "com.checkitt",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.checkitt"
+  },
+  {
+    id: "perfectear",
+    name: "Perfect Ear",
+    icon: "🎵",
+    packageName: "com.evilduck.musiciankit",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.evilduck.musiciankit"
+  },
+  {
+    id: "crossword",
+    name: "Crossword",
+    icon: "🧩",
+    packageName: "com.redstonegames.crossword.en",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.redstonegames.crossword.en"
+  },
+  {
+    id: "vocab",
+    name: "Vocabulary Builder",
+    icon: "📚",
+    packageName: "com.magoosh.vocabulary.builder",
+    fallbackUrl: "https://play.google.com/store/apps/details?id=com.magoosh.vocabulary.builder"
+  }
+];
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let title = "";
@@ -58,13 +102,25 @@ function _page($$renderer, $$props) {
         ["none", "None"],
         ["url", "URL"],
         ["file", "PDF File"],
-        ["intent", "Intent"]
+        ["app", "App"]
       ]);
       for (let $$index_2 = 0, $$length2 = each_array_3.length; $$index_2 < $$length2; $$index_2++) {
         let [value, label] = each_array_3[$$index_2];
-        $$renderer2.push(`<button${attr_class("segment-btn small svelte-1njc2kt", void 0, { "selected": task.linkType === value })}>${escape_html(label)}</button>`);
+        $$renderer2.push(`<button type="button"${attr_class("segment-btn small svelte-1njc2kt", void 0, { "selected": task.linkType === value })}>${escape_html(label)}</button>`);
       }
       $$renderer2.push(`<!--]--></div></div> `);
+      if (task.linkType === "app") {
+        $$renderer2.push(`<!--[0--><div class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Select Android App to Launch</span> <div class="app-chips-grid svelte-1njc2kt"><!--[-->`);
+        const each_array_4 = ensure_array_like(PRESET_APPS);
+        for (let $$index_3 = 0, $$length2 = each_array_4.length; $$index_3 < $$length2; $$index_3++) {
+          let app = each_array_4[$$index_3];
+          $$renderer2.push(`<button type="button"${attr_class("app-chip svelte-1njc2kt", void 0, { "selected": task.appId === app.id })}><span class="app-chip-icon svelte-1njc2kt">${escape_html(app.icon)}</span> <span class="app-chip-name">${escape_html(app.name)}</span></button>`);
+        }
+        $$renderer2.push(`<!--]--></div></div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
       if (task.linkType === "file") {
         $$renderer2.push(`<!--[0--><div class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Offline PDF Document</span> <div class="file-picker-container svelte-1njc2kt"><input type="file" accept="application/pdf,.pdf"${attr("id", `file-input-${stringify(task.key)}`)} class="file-input-hidden svelte-1njc2kt"/> <label${attr("for", `file-input-${stringify(task.key)}`)} class="file-picker-btn svelte-1njc2kt">📎 ${escape_html(task.fileName ? "Change PDF File" : "Choose PDF File")}</label> `);
         if (task.fileName) {

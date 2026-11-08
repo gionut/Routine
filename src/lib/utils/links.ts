@@ -1,14 +1,25 @@
 import type { Task } from '$lib/db/types';
 import { openStoredPdf } from '$lib/db/files';
+import { getPresetAppById, buildAppIntentUrl } from '$lib/constants/apps';
 
 /**
- * Builds the URL to open for a task, incorporating metadata like YouTube timestamps or PDF page numbers.
+ * Builds the URL to open for a task, incorporating metadata like YouTube timestamps, PDF page numbers, or app intents.
  */
 export function buildTaskLink(task: Task): string | null {
 	if (task.linkType === 'none') return null;
 
 	if (task.linkType === 'file') {
 		return task.linkMeta?.fileName ? `file://${task.linkMeta.fileName}` : 'file://document.pdf';
+	}
+
+	if (task.linkType === 'app') {
+		if (task.linkUrl) return task.linkUrl;
+		const appId = task.linkMeta?.appId as string | undefined;
+		if (appId) {
+			const preset = getPresetAppById(appId);
+			if (preset) return buildAppIntentUrl(preset);
+		}
+		return null;
 	}
 
 	if (!task.linkUrl) return null;
@@ -48,7 +59,20 @@ export async function openTaskLink(task: Task): Promise<void> {
 	}
 
 	const url = buildTaskLink(task);
-	if (url && !url.startsWith('file://')) {
+	if (!url || url.startsWith('file://')) return;
+
+	if (url.startsWith('intent:')) {
+		if (typeof document !== 'undefined') {
+			const a = document.createElement('a');
+			a.href = url;
+			a.rel = 'noopener';
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+		} else if (typeof window !== 'undefined') {
+			window.location.href = url;
+		}
+	} else {
 		window.open(url, '_blank');
 	}
 }
@@ -59,11 +83,24 @@ export async function openTaskLink(task: Task): Promise<void> {
 export function describeLinkType(task: Task): string {
 	if (task.linkType === 'none') return 'No link';
 	if (task.linkType === 'file') return 'Offline PDF';
+
+	if (task.linkType === 'app') {
+		const name = (task.linkMeta?.appName as string) || 'App';
+		const icon = (task.linkMeta?.appIcon as string) || '📱';
+		return `${icon} ${name}`;
+	}
+
 	if (!task.linkUrl) return 'No link';
 
 	const url = task.linkUrl.toLowerCase();
 	if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
 	if (url.includes('.pdf')) return 'Online PDF';
-	if (task.linkType === 'intent' || url.startsWith('intent://')) return 'App';
+	if (task.linkType === 'intent' || url.startsWith('intent:')) {
+		if (task.linkMeta?.appName) {
+			const icon = (task.linkMeta?.appIcon as string) || '📱';
+			return `${icon} ${task.linkMeta.appName}`;
+		}
+		return 'App';
+	}
 	return 'Website';
 }

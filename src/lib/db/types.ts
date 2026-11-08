@@ -15,7 +15,7 @@ export interface Task {
 	routineId: number;
 	title: string;
 	duration: number; // seconds
-	linkType: 'url' | 'intent' | 'file' | 'none';
+	linkType: 'url' | 'intent' | 'file' | 'app' | 'none';
 	linkUrl?: string;
 	linkMeta?: {
 		ytTimestamp?: number;
@@ -23,6 +23,10 @@ export interface Task {
 		fileId?: number;
 		fileName?: string;
 		fileSize?: number;
+		appId?: string;
+		appName?: string;
+		appIcon?: string;
+		packageName?: string;
 		[key: string]: unknown;
 	};
 	sortOrder: number;

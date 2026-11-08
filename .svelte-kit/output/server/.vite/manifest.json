@@ -176,7 +176,7 @@
       "_database.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CbEXSi1r.css"
+      "_app/immutable/assets/_page.BL_EDlCh.css"
     ]
   },
   "src/routes/routines/[id]/session/+page.svelte": {
@@ -210,7 +210,7 @@
       "_database.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.AE8_o4y0.css"
+      "_app/immutable/assets/_page.Djb0umCu.css"
     ]
   },
   "virtual:__sveltekit/env": {
