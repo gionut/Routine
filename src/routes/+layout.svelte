@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { requestNotificationPermission } from '$lib/utils/notifications';
+	import QuickAttachModal from '$lib/components/QuickAttachModal.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -55,6 +56,9 @@
 	<main class="main-content">
 		{@render children()}
 	</main>
+
+	<!-- Quick Attach Modal (for Web Share Target) -->
+	<QuickAttachModal />
 
 	<!-- Bottom Navigation -->
 	<nav class="bottom-nav">

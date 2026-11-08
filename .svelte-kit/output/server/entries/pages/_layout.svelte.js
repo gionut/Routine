@@ -6,6 +6,7 @@ import "../../chunks/utils2.js";
 import "@sveltejs/kit/internal/server";
 import "../../chunks/root.js";
 import "../../chunks/state.svelte.js";
+import "../../chunks/database.js";
 const getStores = () => {
   const stores = getContext("__svelte__");
   return {
@@ -27,6 +28,14 @@ const page = {
     return store.subscribe(fn);
   }
 };
+function QuickAttachModal($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]-->`);
+  });
+}
 function _layout($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -42,7 +51,9 @@ function _layout($$renderer, $$props) {
     }
     $$renderer2.push(`<div class="app-shell svelte-12qhfyh"><header class="top-bar svelte-12qhfyh"><h1 class="top-bar-title svelte-12qhfyh">Routine</h1></header> <main class="main-content svelte-12qhfyh">`);
     children($$renderer2);
-    $$renderer2.push(`<!----></main> <nav class="bottom-nav svelte-12qhfyh"><!--[-->`);
+    $$renderer2.push(`<!----></main> `);
+    QuickAttachModal($$renderer2);
+    $$renderer2.push(`<!----> <nav class="bottom-nav svelte-12qhfyh"><!--[-->`);
     const each_array = ensure_array_like(navItems);
     for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
       let item = each_array[$$index];

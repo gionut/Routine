@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { createRoutine } from '$lib/db/routines';
 	import { addTask } from '$lib/db/tasks';
+	import { saveStoredFile } from '$lib/db/files';
 	import { minutesToSeconds } from '$lib/utils/time';
 	import type { Routine, Task } from '$lib/db/types';
 
@@ -15,6 +16,10 @@
 		linkUrl: string;
 		ytTimestamp: number | null;
 		pdfPage: number | null;
+		fileId: number | null;
+		fileName: string | null;
+		fileSize: number | null;
+		selectedFile: File | null;
 	}
 
 	let title = $state('');
@@ -41,8 +46,32 @@
 			linkType: 'none',
 			linkUrl: '',
 			ytTimestamp: null,
-			pdfPage: null
+			pdfPage: null,
+			fileId: null,
+			fileName: null,
+			fileSize: null,
+			selectedFile: null
 		});
+	}
+
+	function handleFileSelected(task: TaskForm, event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (file) {
+			task.selectedFile = file;
+			task.fileName = file.name;
+			task.fileSize = file.size;
+			if (!task.title) {
+				// Prefill task title from file name (strip .pdf)
+				task.title = file.name.replace(/\.pdf$/i, '');
+			}
+		}
+	}
+
+	function formatFileSize(bytes: number | null): string {
+		if (!bytes) return '';
+		if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
 	function removeTask(index: number) {
@@ -91,6 +120,19 @@
 					if (isPdfUrl(task.linkUrl) && task.pdfPage !== null && task.pdfPage > 0) {
 						linkMeta.pdfPage = task.pdfPage;
 					}
+				} else if (task.linkType === 'file') {
+					let fileId = task.fileId;
+					if (task.selectedFile) {
+						fileId = await saveStoredFile(task.selectedFile, task.selectedFile.name);
+					}
+					if (fileId) {
+						linkMeta.fileId = fileId;
+						linkMeta.fileName = task.fileName || 'document.pdf';
+						linkMeta.fileSize = task.fileSize || 0;
+					}
+					if (task.pdfPage !== null && task.pdfPage > 0) {
+						linkMeta.pdfPage = task.pdfPage;
+					}
 				}
 
 				await addTask({
@@ -98,7 +140,7 @@
 					title: task.title.trim(),
 					duration: minutesToSeconds(task.durationMinutes),
 					linkType: task.linkType,
-					linkUrl: task.linkType !== 'none' ? task.linkUrl : undefined,
+					linkUrl: task.linkType === 'url' || task.linkType === 'intent' ? task.linkUrl : undefined,
 					linkMeta: Object.keys(linkMeta).length > 0 ? linkMeta : undefined
 				});
 			}
@@ -214,7 +256,7 @@
 				<div class="field">
 					<span class="body-medium field-hint">Link Type</span>
 					<div class="link-type-group">
-						{#each [['none', 'None'], ['url', 'URL'], ['intent', 'Intent']] as [value, label]}
+						{#each [['none', 'None'], ['url', 'URL'], ['file', 'PDF File'], ['intent', 'Intent']] as [value, label]}
 							<button
 								class="segment-btn small"
 								class:selected={task.linkType === value}
@@ -225,6 +267,44 @@
 						{/each}
 					</div>
 				</div>
+
+				{#if task.linkType === 'file'}
+					<div class="field">
+						<span class="body-medium field-hint">Offline PDF Document</span>
+						<div class="file-picker-container">
+							<input
+								type="file"
+								accept="application/pdf,.pdf"
+								id="file-input-{task.key}"
+								class="file-input-hidden"
+								onchange={(e) => handleFileSelected(task, e)}
+							/>
+							<label for="file-input-{task.key}" class="file-picker-btn">
+								📎 {task.fileName ? 'Change PDF File' : 'Choose PDF File'}
+							</label>
+
+							{#if task.fileName}
+								<div class="file-info-badge">
+									<span class="file-name">📄 {task.fileName}</span>
+									{#if task.fileSize}
+										<span class="file-size label-medium">({formatFileSize(task.fileSize)})</span>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					</div>
+
+					<label class="field">
+						<span class="body-medium field-hint">Starting PDF Page Number (optional)</span>
+						<input
+							type="number"
+							class="text-input small-input"
+							min="1"
+							placeholder="1"
+							bind:value={task.pdfPage}
+						/>
+					</label>
+				{/if}
 
 				{#if task.linkType === 'url' || task.linkType === 'intent'}
 					<label class="field">
@@ -376,7 +456,54 @@
 		border: 1px solid var(--md-sys-color-outline);
 		border-radius: var(--md-sys-shape-corner-full);
 		overflow: hidden;
-		max-width: 280px;
+		max-width: 360px;
+	}
+
+	.file-picker-container {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		align-items: flex-start;
+	}
+
+	.file-input-hidden {
+		display: none;
+	}
+
+	.file-picker-btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 10px 18px;
+		border: 1px solid var(--md-sys-color-primary);
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-primary-container);
+		color: var(--md-sys-color-on-primary-container);
+		font: var(--md-sys-typescale-label-large);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.file-picker-btn:hover {
+		background-color: var(--md-sys-color-primary);
+		color: var(--md-sys-color-on-primary);
+	}
+
+	.file-info-badge {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		border-radius: var(--md-sys-shape-corner-small);
+		background-color: var(--md-sys-color-surface-container);
+	}
+
+	.file-name {
+		font: var(--md-sys-typescale-body-medium);
+		color: var(--md-sys-color-on-surface);
+	}
+
+	.file-size {
+		color: var(--md-sys-color-on-surface-variant);
 	}
 
 	/* Day chips */

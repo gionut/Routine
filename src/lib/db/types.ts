@@ -15,9 +15,16 @@ export interface Task {
 	routineId: number;
 	title: string;
 	duration: number; // seconds
-	linkType: 'url' | 'intent' | 'none';
+	linkType: 'url' | 'intent' | 'file' | 'none';
 	linkUrl?: string;
-	linkMeta?: Record<string, unknown>;
+	linkMeta?: {
+		ytTimestamp?: number;
+		pdfPage?: number;
+		fileId?: number;
+		fileName?: string;
+		fileSize?: number;
+		[key: string]: unknown;
+	};
 	sortOrder: number;
 }
 
@@ -38,4 +45,23 @@ export interface TaskProgress {
 	status: 'pending' | 'running' | 'paused' | 'completed';
 	linkState?: Record<string, unknown>;
 	lastResumedAt?: Date;
+}
+
+export interface StoredFile {
+	id?: number;
+	name: string;
+	mimeType: string;
+	size: number;
+	createdAt: Date;
+	blob: Blob;
+}
+
+export interface PendingShare {
+	id?: number;
+	title?: string;
+	text?: string;
+	url?: string;
+	fileId?: number;
+	fileName?: string;
+	createdAt: Date;
 }

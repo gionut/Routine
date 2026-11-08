@@ -4,7 +4,6 @@
 	import { page } from '$app/stores';
 	import { db } from '$lib/db/database';
 	import { getRoutine } from '$lib/db/routines';
-	import { getTasksForRoutine } from '$lib/db/tasks';
 	import {
 		getOrCreateTodaySession,
 		initializeTaskProgress,
@@ -18,7 +17,6 @@
 		resumeTimer,
 		pauseTimer,
 		completeTask,
-		resetTimer,
 		getTimerState
 	} from '$lib/stores/timer.svelte';
 	import { openTaskLink, describeLinkType } from '$lib/utils/links';
@@ -101,14 +99,8 @@
 			}
 		}));
 
-		// Find the first non-completed task
-		const firstPending = taskItems.findIndex(
-			(t) => t.progress.status !== 'completed'
-		);
-		activeTaskIndex = firstPending;
-
 		// Check if all tasks are completed
-		allCompleted = taskItems.every((t) => t.progress.status === 'completed');
+		allCompleted = taskItems.length > 0 && taskItems.every((t) => t.progress.status === 'completed');
 
 		if (allCompleted && session && session.status !== 'completed') {
 			await completeSession(session.id!);
@@ -116,9 +108,15 @@
 			notifyRoutineComplete(routine?.title ?? 'Routine');
 		}
 
-		// Load the active task into the timer
-		if (firstPending >= 0) {
-			const item = taskItems[firstPending];
+		// If no task is selected yet, default to first pending or 0
+		if (activeTaskIndex < 0 || activeTaskIndex >= taskItems.length) {
+			const firstPending = taskItems.findIndex((t) => t.progress.status !== 'completed');
+			activeTaskIndex = firstPending >= 0 ? firstPending : 0;
+		}
+
+		// Load active task into timer
+		if (taskItems.length > 0 && activeTaskIndex >= 0) {
+			const item = taskItems[activeTaskIndex];
 			await loadTask(
 				item.progress.id!,
 				item.task.id!,
@@ -127,6 +125,26 @@
 				item.progress
 			);
 		}
+	}
+
+	async function selectTask(index: number) {
+		if (index < 0 || index >= taskItems.length) return;
+		if (index === activeTaskIndex) return;
+
+		// Pause current timer if running
+		if (timer.status === 'running') {
+			await pauseTimer();
+		}
+
+		activeTaskIndex = index;
+		const item = taskItems[index];
+		await loadTask(
+			item.progress.id!,
+			item.task.id!,
+			item.task.title,
+			item.task.duration,
+			item.progress
+		);
 	}
 
 	async function handleStartPause() {
@@ -139,13 +157,50 @@
 
 	async function handleCompleteTask() {
 		await completeTask();
+		// Look for next pending task
+		const nextPending = taskItems.findIndex(
+			(t, i) => i !== activeTaskIndex && t.progress.status !== 'completed'
+		);
+		if (nextPending >= 0) {
+			activeTaskIndex = nextPending;
+		}
 		await refreshTaskList();
 	}
 
-	function handleOpenLink() {
+	async function handleRedoTask() {
+		if (activeTaskIndex < 0) return;
+		const item = taskItems[activeTaskIndex];
+		if (!item.progress.id) return;
+
+		await updateTaskProgress(item.progress.id, {
+			status: 'pending',
+			elapsedSeconds: 0,
+			lastResumedAt: undefined
+		});
+
+		item.progress.status = 'pending';
+		item.progress.elapsedSeconds = 0;
+		allCompleted = false;
+
+		await loadTask(
+			item.progress.id,
+			item.task.id!,
+			item.task.title,
+			item.task.duration,
+			item.progress
+		);
+	}
+
+	async function goToNextTask() {
+		if (taskItems.length <= 1) return;
+		const nextIndex = (activeTaskIndex + 1) % taskItems.length;
+		await selectTask(nextIndex);
+	}
+
+	async function handleOpenLink() {
 		if (activeTaskIndex >= 0) {
 			const task = taskItems[activeTaskIndex].task;
-			openTaskLink(task);
+			await openTaskLink(task);
 		}
 	}
 
@@ -157,6 +212,7 @@
 	}
 
 	function isPdf(task: Task): boolean {
+		if (task.linkType === 'file') return true;
 		return !!task.linkUrl && /\.pdf(?:$|[?#])/i.test(task.linkUrl);
 	}
 
@@ -192,31 +248,11 @@
 		editingBookmark = false;
 	}
 
-	async function selectTask(index: number) {
-		if (taskItems[index].progress.status === 'completed') return;
-
-		// Pause current timer if running
-		if (timer.status === 'running') {
-			await pauseTimer();
-		}
-
-		activeTaskIndex = index;
-		const item = taskItems[index];
-		await loadTask(
-			item.progress.id!,
-			item.task.id!,
-			item.task.title,
-			item.task.duration,
-			item.progress
-		);
-	}
-
 	function getProgressPercent(): number {
 		if (timer.totalDuration === 0) return 0;
 		return (timer.elapsedSeconds / timer.totalDuration) * 100;
 	}
 
-	// Circular timer visual properties
 	const circumference = 2 * Math.PI * 90; // radius=90
 </script>
 
@@ -226,156 +262,224 @@
 		<button class="back-btn" onclick={() => goto('/')}>
 			← Back
 		</button>
-		<h2 class="title-large">{routine?.title ?? 'Loading...'}</h2>
+		<h2 class="title-large routine-title">{routine?.title ?? 'Loading...'}</h2>
 	</div>
 
 	{#if loading}
 		<div class="loading-state">
 			<p class="body-large">Loading session...</p>
 		</div>
-	{:else if allCompleted}
-		<div class="completed-state">
-			<div class="completed-icon">🎉</div>
-			<h2 class="headline-small">All Done!</h2>
-			<p class="body-large" style="color: var(--md-sys-color-on-surface-variant)">
-				You've completed all tasks in this routine.
-			</p>
-			<button class="btn-filled" onclick={() => goto('/')}>
-				Back to Today
+	{:else if taskItems.length === 0}
+		<div class="empty-state">
+			<p class="title-medium">This routine has no tasks yet</p>
+			<button class="btn-filled" onclick={() => goto(`/routines/${routineId}`)}>
+				Add Tasks
 			</button>
 		</div>
-	{:else if activeTaskIndex >= 0}
-		<!-- Timer Display -->
-		<div class="timer-section">
-			<div class="timer-ring">
-				<svg viewBox="0 0 200 200" class="timer-svg">
-					<!-- Background circle -->
-					<circle
-						cx="100"
-						cy="100"
-						r="90"
-						fill="none"
-						stroke="var(--md-sys-color-surface-container-highest)"
-						stroke-width="8"
-					/>
-					<!-- Progress circle -->
-					<circle
-						cx="100"
-						cy="100"
-						r="90"
-						fill="none"
-						stroke={timer.status === 'completed' ? '#4caf50' : 'var(--md-sys-color-primary)'}
-						stroke-width="8"
-						stroke-linecap="round"
-						stroke-dasharray={circumference}
-						stroke-dashoffset={circumference - (circumference * getProgressPercent()) / 100}
-						transform="rotate(-90 100 100)"
-						class="progress-ring"
-					/>
-				</svg>
-				<div class="timer-text">
-					<span class="timer-time">{formatTime(timer.remainingSeconds)}</span>
-					<span class="timer-label label-medium">
-						{timer.status === 'running' ? 'remaining' :
-						 timer.status === 'paused' ? 'paused' :
-						 timer.status === 'completed' ? 'done!' : 'ready'}
-					</span>
-				</div>
-			</div>
-
-			<!-- Timer Controls -->
-			<div class="timer-controls">
-				{#if timer.status !== 'completed'}
-					<button
-						class="control-btn"
-						class:running={timer.status === 'running'}
-						onclick={handleStartPause}
-					>
-						{timer.status === 'running' ? '⏸ Pause' : '▶ Start'}
-					</button>
-				{/if}
-				<button class="control-btn complete-btn" onclick={handleCompleteTask}>
-					{timer.status === 'completed' ? '✓ Next Task' : '⏭ Complete'}
-				</button>
-			</div>
-		</div>
-
-		<!-- Current Task Info -->
-		<div class="current-task-section">
-			<span class="label-medium" style="color: var(--md-sys-color-on-surface-variant)">Current Task</span>
-			<div class="current-task-card">
-				<div class="task-info">
-					<h3 class="title-medium">{taskItems[activeTaskIndex].task.title}</h3>
+	{:else}
+		<!-- Completion Banner (if finished) -->
+		{#if allCompleted}
+			<div class="all-done-banner">
+				<span class="banner-icon">🎉</span>
+				<div class="banner-text">
+					<span class="label-large">All tasks finished for today!</span>
 					<span class="body-medium" style="color: var(--md-sys-color-on-surface-variant)">
-						{formatDuration(taskItems[activeTaskIndex].task.duration)}
+						You can review or re-practice any task below.
 					</span>
 				</div>
-				{#if taskItems[activeTaskIndex].task.linkType !== 'none' && taskItems[activeTaskIndex].task.linkUrl}
-					<div class="link-actions">
-						<button class="link-btn" onclick={handleOpenLink}>
-							🔗 Open {describeLinkType(taskItems[activeTaskIndex].task)}
-						</button>
+			</div>
+		{/if}
 
-						{#if isYouTube(taskItems[activeTaskIndex].task) || isPdf(taskItems[activeTaskIndex].task)}
-							<div class="bookmark-row">
-								{#if !editingBookmark}
-									<span class="bookmark-badge label-medium">
-										{#if isYouTube(taskItems[activeTaskIndex].task)}
-											{getCurrentBookmark(taskItems[activeTaskIndex].task) !== null ? `⏱ Resume at ${getCurrentBookmark(taskItems[activeTaskIndex].task)}s` : '⏱ Using YouTube history'}
-										{:else if isPdf(taskItems[activeTaskIndex].task)}
-											{getCurrentBookmark(taskItems[activeTaskIndex].task) !== null ? `📄 Resume at p. ${getCurrentBookmark(taskItems[activeTaskIndex].task)}` : '📄 No page saved'}
-										{/if}
-									</span>
-									<button class="text-link-btn label-medium" onclick={() => {
-										bookmarkValue = getCurrentBookmark(taskItems[activeTaskIndex].task);
-										editingBookmark = true;
-									}}>
-										Update position
-									</button>
-								{:else}
-									<div class="bookmark-edit">
-										<input
-											type="number"
-											min="0"
-											class="bookmark-input"
-											placeholder={isYouTube(taskItems[activeTaskIndex].task) ? 'seconds' : 'page'}
-											bind:value={bookmarkValue}
-										/>
-										<button class="save-bookmark-btn label-medium" onclick={saveBookmark}>Save</button>
-										<button class="cancel-bookmark-btn label-medium" onclick={() => editingBookmark = false}>Cancel</button>
-									</div>
-								{/if}
-							</div>
-						{/if}
-					</div>
-				{/if}
+		<!-- Top Task Selector (Chips) -->
+		<div class="task-selector-wrapper">
+			<div class="task-chips-scroll">
+				{#each taskItems as item, i (item.task.id)}
+					<button
+						class="task-chip"
+						class:active={i === activeTaskIndex}
+						class:chip-completed={item.progress.status === 'completed'}
+						class:chip-running={i === activeTaskIndex && timer.status === 'running'}
+						onclick={() => selectTask(i)}
+					>
+						<span class="chip-status-icon">
+							{#if item.progress.status === 'completed'}✓{:else}{i + 1}{/if}
+						</span>
+						<span class="chip-label">{item.task.title}</span>
+					</button>
+				{/each}
 			</div>
 		</div>
 
-		<!-- Task List -->
-		<div class="task-list-section">
-			{#each taskItems as item, i (item.task.id)}
-				{#if i !== activeTaskIndex}
-					<button
-						class="task-list-item"
-						class:completed-task={item.progress.status === 'completed'}
-						class:pending-task={item.progress.status === 'pending' || item.progress.status === 'paused'}
-						onclick={() => selectTask(i)}
-						disabled={item.progress.status === 'completed'}
-					>
-						<span class="task-status-icon">
-							{item.progress.status === 'completed' ? '✅' : '○'}
+		{#if activeTaskIndex >= 0}
+			<!-- Timer Section -->
+			<div class="timer-section">
+				<div class="timer-ring">
+					<svg viewBox="0 0 200 200" class="timer-svg">
+						<!-- Background circle -->
+						<circle
+							cx="100"
+							cy="100"
+							r="90"
+							fill="none"
+							stroke="var(--md-sys-color-surface-container-highest)"
+							stroke-width="8"
+						/>
+						<!-- Progress circle -->
+						<circle
+							cx="100"
+							cy="100"
+							r="90"
+							fill="none"
+							stroke={timer.status === 'completed' ? '#4caf50' : 'var(--md-sys-color-primary)'}
+							stroke-width="8"
+							stroke-linecap="round"
+							stroke-dasharray={circumference}
+							stroke-dashoffset={circumference - (circumference * getProgressPercent()) / 100}
+							transform="rotate(-90 100 100)"
+							class="progress-ring"
+						/>
+					</svg>
+					<div class="timer-text">
+						<span class="timer-time">{formatTime(timer.remainingSeconds)}</span>
+						<span class="timer-label label-medium">
+							{timer.status === 'running' ? 'remaining' :
+							 timer.status === 'paused' ? 'paused' :
+							 timer.status === 'completed' ? 'done!' : 'ready'}
 						</span>
-						<span class="task-item-title body-medium">
-							{item.task.title}
+					</div>
+				</div>
+
+				<!-- Timer Controls -->
+				<div class="timer-controls">
+					{#if timer.status !== 'completed'}
+						<button
+							class="control-btn"
+							class:running={timer.status === 'running'}
+							onclick={handleStartPause}
+						>
+							{timer.status === 'running' ? '⏸ Pause' : '▶ Start'}
+						</button>
+						<button class="control-btn complete-btn" onclick={handleCompleteTask}>
+							✓ Complete Task
+						</button>
+					{:else}
+						<button class="control-btn redo-btn" onclick={handleRedoTask}>
+							↻ Re-do Task
+						</button>
+						<button class="control-btn complete-btn" onclick={goToNextTask}>
+							⏭ Next Task
+						</button>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Current Task Card -->
+			<div class="current-task-section">
+				<div class="section-title-row">
+					<span class="label-medium" style="color: var(--md-sys-color-on-surface-variant)">
+						Active Task ({activeTaskIndex + 1} of {taskItems.length})
+					</span>
+					{#if taskItems[activeTaskIndex].progress.status === 'completed'}
+						<span class="task-completed-pill label-medium">Completed ✓</span>
+					{/if}
+				</div>
+
+				<div class="current-task-card">
+					<div class="task-info">
+						<h3 class="title-medium">{taskItems[activeTaskIndex].task.title}</h3>
+						<span class="body-medium" style="color: var(--md-sys-color-on-primary-container)">
+							{formatDuration(taskItems[activeTaskIndex].task.duration)}
 						</span>
-						<span class="task-item-duration label-medium">
-							{formatDuration(item.task.duration)}
-						</span>
-					</button>
-				{/if}
-			{/each}
-		</div>
+					</div>
+
+					{#if taskItems[activeTaskIndex].task.linkType !== 'none' && (taskItems[activeTaskIndex].task.linkUrl || taskItems[activeTaskIndex].task.linkType === 'file')}
+						<div class="link-actions">
+							<button class="link-btn" onclick={handleOpenLink}>
+								🔗 Open {describeLinkType(taskItems[activeTaskIndex].task)}
+							</button>
+
+							{#if isYouTube(taskItems[activeTaskIndex].task) || isPdf(taskItems[activeTaskIndex].task)}
+								<div class="bookmark-row">
+									{#if !editingBookmark}
+										<span class="bookmark-badge label-medium">
+											{#if isYouTube(taskItems[activeTaskIndex].task)}
+												{getCurrentBookmark(taskItems[activeTaskIndex].task) !== null ? `⏱ Resume at ${getCurrentBookmark(taskItems[activeTaskIndex].task)}s` : '⏱ Using YouTube history'}
+											{:else if isPdf(taskItems[activeTaskIndex].task)}
+												{getCurrentBookmark(taskItems[activeTaskIndex].task) !== null ? `📄 Resume at p. ${getCurrentBookmark(taskItems[activeTaskIndex].task)}` : '📄 Resume at p. 1'}
+											{/if}
+										</span>
+										<button class="text-link-btn label-medium" onclick={() => {
+											bookmarkValue = getCurrentBookmark(taskItems[activeTaskIndex].task) ?? 1;
+											editingBookmark = true;
+										}}>
+											Update position
+										</button>
+									{:else}
+										<div class="bookmark-edit">
+											<input
+												type="number"
+												min="0"
+												class="bookmark-input"
+												placeholder={isYouTube(taskItems[activeTaskIndex].task) ? 'seconds' : 'page'}
+												bind:value={bookmarkValue}
+											/>
+											<button class="save-bookmark-btn label-medium" onclick={saveBookmark}>Save</button>
+											<button class="cancel-bookmark-btn label-medium" onclick={() => editingBookmark = false}>Cancel</button>
+										</div>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- All Routine Tasks List (Tap to switch anytime) -->
+			<div class="task-list-section">
+				<span class="label-medium" style="color: var(--md-sys-color-on-surface-variant); padding: 0 4px;">
+					All Routine Tasks (tap any to switch)
+				</span>
+				<div class="task-list-card">
+					{#each taskItems as item, i (item.task.id)}
+						<button
+							class="task-list-item"
+							class:active-task={i === activeTaskIndex}
+							class:completed-task={item.progress.status === 'completed'}
+							class:running-task={i === activeTaskIndex && timer.status === 'running'}
+							onclick={() => selectTask(i)}
+						>
+							<span class="task-status-icon">
+								{#if item.progress.status === 'completed'}
+									✅
+								{:else if i === activeTaskIndex && timer.status === 'running'}
+									▶
+								{:else if item.progress.status === 'paused'}
+									⏸
+								{:else}
+									{i + 1}.
+								{/if}
+							</span>
+							<div class="task-item-content">
+								<span class="task-item-title body-medium">
+									{item.task.title}
+								</span>
+								<span class="task-item-meta label-medium">
+									{formatDuration(item.task.duration)}
+									{#if item.progress.status === 'completed'}
+										· Done
+									{:else if item.progress.elapsedSeconds > 0}
+										· {formatDuration(item.progress.elapsedSeconds)} done
+									{/if}
+								</span>
+							</div>
+							{#if i === activeTaskIndex}
+								<span class="active-badge label-medium">Active</span>
+							{/if}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -383,13 +487,19 @@
 	.session-page {
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		gap: 16px;
 	}
 
 	.session-header {
 		display: flex;
 		align-items: center;
 		gap: 12px;
+	}
+
+	.routine-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.back-btn {
@@ -407,7 +517,7 @@
 	}
 
 	.loading-state,
-	.completed-state {
+	.empty-state {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -417,19 +527,79 @@
 		text-align: center;
 	}
 
-	.completed-icon {
-		font-size: 4rem;
+	.all-done-banner {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 16px;
+		border-radius: var(--md-sys-shape-corner-medium);
+		background-color: #E8F5E9;
+		color: #1B5E20;
+		border: 1px solid #A5D6A7;
 	}
 
-	.btn-filled {
-		margin-top: 12px;
-		padding: 12px 24px;
-		border: none;
+	.banner-icon {
+		font-size: 1.5rem;
+	}
+
+	.banner-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	/* Top Task Chips */
+	.task-selector-wrapper {
+		width: 100%;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.task-selector-wrapper::-webkit-scrollbar {
+		display: none;
+	}
+
+	.task-chips-scroll {
+		display: flex;
+		gap: 8px;
+		padding: 4px 0;
+	}
+
+	.task-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 14px;
+		border: 1px solid var(--md-sys-color-outline-variant);
 		border-radius: var(--md-sys-shape-corner-full);
-		background-color: var(--md-sys-color-primary);
-		color: var(--md-sys-color-on-primary);
-		font: var(--md-sys-typescale-label-large);
+		background-color: var(--md-sys-color-surface-container);
+		color: var(--md-sys-color-on-surface);
+		font: var(--md-sys-typescale-label-medium);
 		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.2s ease;
+	}
+
+	.task-chip.active {
+		border-color: var(--md-sys-color-primary);
+		background-color: var(--md-sys-color-primary-container);
+		color: var(--md-sys-color-on-primary-container);
+		font-weight: 600;
+	}
+
+	.task-chip.chip-completed {
+		border-color: #A5D6A7;
+		background-color: #F1F8E9;
+		color: #2E7D32;
+	}
+
+	.task-chip.chip-running {
+		box-shadow: 0 0 0 2px var(--md-sys-color-primary);
+	}
+
+	.chip-status-icon {
+		font-size: 0.85rem;
 	}
 
 	/* Timer */
@@ -437,7 +607,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 20px;
+		gap: 16px;
+		padding: 8px 0;
 	}
 
 	.timer-ring {
@@ -483,7 +654,7 @@
 	}
 
 	.control-btn {
-		padding: 12px 28px;
+		padding: 12px 24px;
 		border: 2px solid var(--md-sys-color-outline);
 		border-radius: var(--md-sys-shape-corner-full);
 		background: none;
@@ -513,11 +684,31 @@
 		box-shadow: var(--md-sys-elevation-1);
 	}
 
-	/* Current Task */
+	.redo-btn {
+		border-color: var(--md-sys-color-primary);
+		color: var(--md-sys-color-primary);
+	}
+
+	/* Current Task Card */
 	.current-task-section {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+
+	.section-title-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0 4px;
+	}
+
+	.task-completed-pill {
+		padding: 2px 8px;
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: #E8F5E9;
+		color: #2E7D32;
+		font-weight: 500;
 	}
 
 	.current-task-card {
@@ -616,11 +807,19 @@
 		padding: 4px;
 	}
 
-	/* Task List */
+	/* Task List Section */
 	.task-list-section {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 8px;
+	}
+
+	.task-list-card {
+		display: flex;
+		flex-direction: column;
+		background-color: var(--md-sys-color-surface-container-low);
+		border-radius: var(--md-sys-shape-corner-medium);
+		overflow: hidden;
 	}
 
 	.task-list-item {
@@ -629,7 +828,7 @@
 		gap: 12px;
 		padding: 12px 16px;
 		border: none;
-		border-radius: var(--md-sys-shape-corner-small);
+		border-bottom: 1px solid var(--md-sys-color-surface-container);
 		background: none;
 		cursor: pointer;
 		text-align: left;
@@ -637,29 +836,58 @@
 		transition: background-color 0.2s ease;
 	}
 
-	.task-list-item:hover:not(:disabled) {
+	.task-list-item:last-child {
+		border-bottom: none;
+	}
+
+	.task-list-item:hover {
 		background-color: var(--md-sys-color-surface-container);
 	}
 
-	.task-list-item:disabled {
-		cursor: default;
-	}
-
-	.completed-task .task-item-title {
-		text-decoration: line-through;
-		color: var(--md-sys-color-on-surface-variant);
+	.task-list-item.active-task {
+		background-color: var(--md-sys-color-secondary-container);
 	}
 
 	.task-status-icon {
 		font-size: 1.1rem;
+		min-width: 24px;
+	}
+
+	.task-item-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.task-item-title {
-		flex: 1;
 		color: var(--md-sys-color-on-surface);
 	}
 
-	.task-item-duration {
+	.task-list-item.completed-task .task-item-title {
 		color: var(--md-sys-color-on-surface-variant);
+	}
+
+	.task-item-meta {
+		color: var(--md-sys-color-on-surface-variant);
+	}
+
+	.active-badge {
+		padding: 2px 8px;
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-primary);
+		color: var(--md-sys-color-on-primary);
+		font-size: 0.75rem;
+	}
+
+	.btn-filled {
+		margin-top: 12px;
+		padding: 12px 24px;
+		border: none;
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-primary);
+		color: var(--md-sys-color-on-primary);
+		font: var(--md-sys-typescale-label-large);
+		cursor: pointer;
 	}
 </style>

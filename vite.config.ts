@@ -30,7 +30,16 @@ export default defineConfig({
 						type: 'image/svg+xml',
 						purpose: 'any maskable'
 					}
-				]
+				],
+				share_target: {
+					action: '/',
+					method: 'GET',
+					params: {
+						title: 'share_title',
+						text: 'share_text',
+						url: 'share_url'
+					}
+				}
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}']

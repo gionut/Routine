@@ -1,4 +1,4 @@
-import { c as attr, a as ensure_array_like, d as attr_class, e as escape_html, j as derived } from "../../../../chunks/index.js";
+import { c as attr, a as ensure_array_like, d as attr_class, e as escape_html, h as stringify, j as derived } from "../../../../chunks/index.js";
 import "@sveltejs/kit/internal";
 import "../../../../chunks/exports.js";
 import "../../../../chunks/utils2.js";
@@ -17,6 +17,11 @@ function _page($$renderer, $$props) {
       { value: "weekly", label: "Weekly" },
       { value: "custom", label: "Custom" }
     ];
+    function formatFileSize(bytes) {
+      if (!bytes) return "";
+      if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
     function isYouTubeUrl(url) {
       return /(?:youtube\.com|youtu\.be)/.test(url);
     }
@@ -49,12 +54,35 @@ function _page($$renderer, $$props) {
     for (let index = 0, $$length = each_array_2.length; index < $$length; index++) {
       let task = each_array_2[index];
       $$renderer2.push(`<div class="task-item svelte-1njc2kt"><div class="task-header svelte-1njc2kt"><span class="label-medium task-number svelte-1njc2kt">Task ${escape_html(index + 1)}</span> <button class="icon-btn delete-btn svelte-1njc2kt" aria-label="Delete task">✕</button></div> <label class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Title</span> <input type="text" class="text-input svelte-1njc2kt" placeholder="Task title"${attr("value", task.title)}/></label> <label class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Duration (minutes)</span> <input type="number" class="text-input small-input svelte-1njc2kt" min="1"${attr("value", task.durationMinutes)}/></label> <div class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Link Type</span> <div class="link-type-group svelte-1njc2kt"><!--[-->`);
-      const each_array_3 = ensure_array_like([["none", "None"], ["url", "URL"], ["intent", "Intent"]]);
+      const each_array_3 = ensure_array_like([
+        ["none", "None"],
+        ["url", "URL"],
+        ["file", "PDF File"],
+        ["intent", "Intent"]
+      ]);
       for (let $$index_2 = 0, $$length2 = each_array_3.length; $$index_2 < $$length2; $$index_2++) {
         let [value, label] = each_array_3[$$index_2];
         $$renderer2.push(`<button${attr_class("segment-btn small svelte-1njc2kt", void 0, { "selected": task.linkType === value })}>${escape_html(label)}</button>`);
       }
       $$renderer2.push(`<!--]--></div></div> `);
+      if (task.linkType === "file") {
+        $$renderer2.push(`<!--[0--><div class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Offline PDF Document</span> <div class="file-picker-container svelte-1njc2kt"><input type="file" accept="application/pdf,.pdf"${attr("id", `file-input-${stringify(task.key)}`)} class="file-input-hidden svelte-1njc2kt"/> <label${attr("for", `file-input-${stringify(task.key)}`)} class="file-picker-btn svelte-1njc2kt">📎 ${escape_html(task.fileName ? "Change PDF File" : "Choose PDF File")}</label> `);
+        if (task.fileName) {
+          $$renderer2.push(`<!--[0--><div class="file-info-badge svelte-1njc2kt"><span class="file-name svelte-1njc2kt">📄 ${escape_html(task.fileName)}</span> `);
+          if (task.fileSize) {
+            $$renderer2.push(`<!--[0--><span class="file-size label-medium svelte-1njc2kt">(${escape_html(formatFileSize(task.fileSize))})</span>`);
+          } else {
+            $$renderer2.push("<!--[-1-->");
+          }
+          $$renderer2.push(`<!--]--></div>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div></div> <label class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">Starting PDF Page Number (optional)</span> <input type="number" class="text-input small-input svelte-1njc2kt" min="1" placeholder="1"${attr("value", task.pdfPage)}/></label>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
       if (task.linkType === "url" || task.linkType === "intent") {
         $$renderer2.push(`<!--[0--><label class="field svelte-1njc2kt"><span class="body-medium field-hint svelte-1njc2kt">URL</span> <input type="url" class="text-input svelte-1njc2kt" placeholder="https://..."${attr("value", task.linkUrl)}/></label> `);
         if (isYouTubeUrl(task.linkUrl)) {

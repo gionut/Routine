@@ -18,7 +18,17 @@ export async function updateTask(id: number, data: Partial<Task>): Promise<void>
 }
 
 export async function deleteTask(id: number): Promise<void> {
-	await db.transaction('rw', [db.tasks, db.taskProgress], async () => {
+	await db.transaction('rw', [db.tasks, db.taskProgress, db.files], async () => {
+		const task = await db.tasks.get(id);
+		if (task?.linkType === 'file' && task.linkMeta?.fileId) {
+			const fileId = task.linkMeta.fileId;
+			const otherTasks = await db.tasks
+				.filter((t) => t.id !== id && t.linkType === 'file' && t.linkMeta?.fileId === fileId)
+				.count();
+			if (otherTasks === 0) {
+				await db.files.delete(fileId);
+			}
+		}
 		await db.taskProgress.where('taskId').equals(id).delete();
 		await db.tasks.delete(id);
 	});
