@@ -25,6 +25,7 @@
 				if (pwaInfo) {
 					const { registerSW } = await import('virtual:pwa-register');
 					registerSW({
+						immediate: true,
 						onNeedRefresh() {
 							if (confirm('New version available. Reload?')) {
 								window.location.reload();
