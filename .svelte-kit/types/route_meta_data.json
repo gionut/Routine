@@ -1,0 +1,21 @@
+{
+	"/": [
+		"src/routes/+layout.ts",
+		"src/routes/+layout.ts"
+	],
+	"/history": [
+		"src/routes/+layout.ts"
+	],
+	"/routines": [
+		"src/routes/+layout.ts"
+	],
+	"/routines/new": [
+		"src/routes/+layout.ts"
+	],
+	"/routines/[id]": [
+		"src/routes/+layout.ts"
+	],
+	"/routines/[id]/session": [
+		"src/routes/+layout.ts"
+	]
+}
