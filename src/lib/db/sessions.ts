@@ -59,24 +59,60 @@ export async function getSessionHistory(
 	}));
 }
 
-export async function initializeTaskProgress(
+export async function syncTaskProgressForSession(
 	sessionId: number,
 	routineId: number
 ): Promise<void> {
 	const tasks = await db.tasks.where('routineId').equals(routineId).sortBy('sortOrder');
+	const progressEntries = await db.taskProgress
+		.where('sessionId')
+		.equals(sessionId)
+		.toArray();
 
-	await db.transaction('rw', db.taskProgress, async () => {
-		await Promise.all(
-			tasks.map((task) =>
-				db.taskProgress.add({
-					sessionId,
-					taskId: task.id!,
-					elapsedSeconds: 0,
-					status: 'pending'
-				})
-			)
-		);
-	});
+	const existingTaskIds = new Set(progressEntries.map((p) => p.taskId));
+	const currentTaskIds = new Set(tasks.map((t) => t.id!));
+
+	// Deduplicate any repeated progress entries for the same taskId in this session
+	const seenTaskIds = new Set<number>();
+	const duplicatesToDelete: number[] = [];
+	for (const p of progressEntries) {
+		if (seenTaskIds.has(p.taskId)) {
+			duplicatesToDelete.push(p.id!);
+		} else {
+			seenTaskIds.add(p.taskId);
+		}
+	}
+
+	// 1. Add progress records for missing tasks
+	const toAdd = tasks
+		.filter((t) => !existingTaskIds.has(t.id!))
+		.map((t) => ({
+			sessionId,
+			taskId: t.id!,
+			elapsedSeconds: 0,
+			status: 'pending' as const
+		}));
+
+	if (toAdd.length > 0) {
+		await db.taskProgress.bulkAdd(toAdd);
+	}
+
+	// 2. Remove progress records for tasks that were deleted from the routine
+	const toDelete = progressEntries
+		.filter((p) => !currentTaskIds.has(p.taskId))
+		.map((p) => p.id!)
+		.concat(duplicatesToDelete);
+
+	if (toDelete.length > 0) {
+		await db.taskProgress.bulkDelete(toDelete);
+	}
+}
+
+export async function initializeTaskProgress(
+	sessionId: number,
+	routineId: number
+): Promise<void> {
+	await syncTaskProgressForSession(sessionId, routineId);
 }
 
 export async function getTaskProgressForSession(
@@ -86,6 +122,10 @@ export async function getTaskProgressForSession(
 		.where('sessionId')
 		.equals(sessionId)
 		.toArray();
+
+	if (progressEntries.length === 0) {
+		return [];
+	}
 
 	const taskIds = progressEntries.map((p) => p.taskId);
 	const tasks = await db.tasks.where('id').anyOf(taskIds).toArray();

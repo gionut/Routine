@@ -7,6 +7,7 @@
 	import {
 		getOrCreateTodaySession,
 		initializeTaskProgress,
+		syncTaskProgressForSession,
 		getTaskProgressForSession,
 		updateTaskProgress,
 		startSession,
@@ -59,15 +60,8 @@
 			const s = await getOrCreateTodaySession(routineId);
 			session = s;
 
-			// Initialize task progress if this is a new session
-			const existingProgress = await db.taskProgress
-				.where('sessionId')
-				.equals(s.id!)
-				.count();
-
-			if (existingProgress === 0) {
-				await initializeTaskProgress(s.id!, routineId);
-			}
+			// Ensure all routine tasks have progress entries in this session
+			await syncTaskProgressForSession(s.id!, routineId);
 
 			// Mark session as in-progress if it was pending
 			if (s.status === 'pending') {
