@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { page } from '$app/stores';
 	import { db } from '$lib/db/database';
 	import { getRoutine } from '$lib/db/routines';
@@ -53,7 +54,7 @@
 		try {
 			const r = await getRoutine(routineId);
 			if (!r) {
-				await goto('/');
+				await goto(`${base}/`);
 				return;
 			}
 			routine = r;
@@ -280,7 +281,7 @@
 <div class="session-page">
 	<!-- Back header -->
 	<div class="session-header">
-		<button class="back-btn" onclick={() => goto('/')}>
+		<button class="back-btn" onclick={() => goto(`${base}/`)}>
 			← Back
 		</button>
 		<h2 class="title-large routine-title">{routine?.title ?? 'Loading...'}</h2>
@@ -293,7 +294,7 @@
 	{:else if taskItems.length === 0}
 		<div class="empty-state">
 			<p class="title-medium">This routine has no tasks yet</p>
-			<button class="btn-filled" onclick={() => goto(`/routines/${routineId}`)}>
+			<button class="btn-filled" onclick={() => goto(`${base}/routines/${routineId}`)}>
 				Add Tasks
 			</button>
 		</div>

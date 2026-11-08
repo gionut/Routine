@@ -33,7 +33,9 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: |
+          npm run build
+          cp build/index.html build/404.html
         env:
           BASE_PATH: '/${{ github.event.repository.name }}'
 

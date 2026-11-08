@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { base } from '$app/paths';
 	import { liveQuery } from 'dexie';
 	import { db } from '$lib/db/database';
 	import { updateRoutine } from '$lib/db/routines';
@@ -38,7 +39,7 @@
 	{:else}
 		<div class="routine-list">
 			{#each routines as routine (routine.id)}
-				<a href="/routines/{routine.id}" class="routine-card">
+				<a href="{base}/routines/{routine.id}" class="routine-card">
 					<div class="routine-info">
 						<span class="routine-title title-medium">{routine.title}</span>
 						<span class="routine-schedule body-medium">{describeSchedule(routine)}</span>
@@ -58,7 +59,7 @@
 		</div>
 	{/if}
 
-	<a href="/routines/new" class="fab" aria-label="Create new routine">
+	<a href="{base}/routines/new" class="fab" aria-label="Create new routine">
 		<span class="fab-icon">+</span>
 	</a>
 </div>

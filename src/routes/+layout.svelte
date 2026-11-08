@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { base } from '$app/paths';
 	import { requestNotificationPermission } from '$lib/utils/notifications';
 	import QuickAttachModal from '$lib/components/QuickAttachModal.svelte';
 	import '../app.css';
@@ -8,9 +9,9 @@
 	let { children } = $props();
 
 	const navItems = [
-		{ href: '/', label: 'Today', icon: '📅' },
-		{ href: '/routines', label: 'Routines', icon: '📋' },
-		{ href: '/history', label: 'History', icon: '📊' }
+		{ href: `${base}/`, label: 'Today', icon: '📅' },
+		{ href: `${base}/routines`, label: 'Routines', icon: '📋' },
+		{ href: `${base}/history`, label: 'History', icon: '📊' }
 	];
 
 	onMount(async () => {
@@ -41,7 +42,9 @@
 	});
 
 	function isActive(path: string, currentPath: string): boolean {
-		if (path === '/') return currentPath === '/';
+		if (path === `${base}/` || path === `${base}`) {
+			return currentPath === `${base}/` || currentPath === `${base}`;
+		}
 		return currentPath.startsWith(path);
 	}
 </script>

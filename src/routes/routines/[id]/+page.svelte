@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { getRoutine, updateRoutine, deleteRoutine } from '$lib/db/routines';
 	import { getTasksForRoutine, addTask, updateTask, deleteTask } from '$lib/db/tasks';
@@ -48,14 +49,14 @@
 	onMount(async () => {
 		const id = Number($page.params.id);
 		if (isNaN(id)) {
-			await goto('/routines');
+			await goto(`${base}/routines`);
 			return;
 		}
 		routineId = id;
 
 		const routine = await getRoutine(id);
 		if (!routine) {
-			await goto('/routines');
+			await goto(`${base}/routines`);
 			return;
 		}
 
@@ -223,7 +224,7 @@
 				}
 			}
 
-			await goto('/routines');
+			await goto(`${base}/routines`);
 		} catch (err) {
 			console.error('Failed to update routine:', err);
 			saving = false;
@@ -235,7 +236,7 @@
 
 		try {
 			await deleteRoutine(routineId);
-			await goto('/routines');
+			await goto(`${base}/routines`);
 		} catch (err) {
 			console.error('Failed to delete routine:', err);
 		}

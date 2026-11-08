@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { createRoutine } from '$lib/db/routines';
 	import { addTask } from '$lib/db/tasks';
 	import { saveStoredFile } from '$lib/db/files';
@@ -158,7 +159,7 @@
 				});
 			}
 
-			await goto('/routines');
+			await goto(`${base}/routines`);
 		} catch (err) {
 			console.error('Failed to create routine:', err);
 			saving = false;

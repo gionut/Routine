@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { getAllRoutines } from '$lib/db/routines';
 	import { getTasksForRoutine, addTask, updateTask } from '$lib/db/tasks';
 	import { getLatestPendingShare, clearAllPendingShares } from '$lib/db/shares';
@@ -118,7 +119,7 @@
 			}
 
 			isOpen = false;
-			await goto(`/routines/${selectedRoutineId}`);
+			await goto(`${base}/routines/${selectedRoutineId}`);
 		} catch (err) {
 			console.error('Failed to attach shared item:', err);
 		} finally {
@@ -129,7 +130,7 @@
 	async function handleCreateNewRoutine() {
 		isOpen = false;
 		// Navigate to new routine page
-		await goto('/routines/new');
+		await goto(`${base}/routines/new`);
 	}
 
 	function handleDismiss() {

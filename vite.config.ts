@@ -16,8 +16,8 @@ export default defineConfig({
 				background_color: '#FFFBFE',
 				display: 'standalone',
 				orientation: 'portrait',
-				start_url: '/',
-				scope: '/',
+				start_url: './',
+				scope: './',
 				icons: [
 					{
 						src: 'pwa-192x192.svg',
@@ -32,7 +32,7 @@ export default defineConfig({
 					}
 				],
 				share_target: {
-					action: '/',
+					action: './',
 					method: 'GET',
 					params: {
 						title: 'share_title',

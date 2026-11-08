@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { db } from '$lib/db/database';
 	import { getActiveRoutines } from '$lib/db/routines';
 	import { getTasksForRoutine } from '$lib/db/tasks';
@@ -142,7 +143,7 @@
 	}
 
 	async function startRoutine(item: TodayRoutine) {
-		await goto(`/routines/${item.routine.id}/session`);
+		await goto(`${base}/routines/${item.routine.id}/session`);
 	}
 </script>
 
@@ -162,7 +163,7 @@
 			<p class="body-medium" style="color: var(--md-sys-color-on-surface-variant)">
 				Create a routine to get started
 			</p>
-			<button class="btn-filled" onclick={() => goto('/routines/new')}>
+			<button class="btn-filled" onclick={() => goto(`${base}/routines/new`)}>
 				+ New Routine
 			</button>
 		</div>
