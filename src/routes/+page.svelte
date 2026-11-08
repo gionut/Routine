@@ -7,7 +7,12 @@
 	import { getOrCreateTodaySession } from '$lib/db/sessions';
 	import { isRoutineDueToday, describeSchedule } from '$lib/utils/scheduler';
 	import { formatDuration } from '$lib/utils/time';
-	import type { Routine, Task, RoutineSession } from '$lib/db/types';
+	import {
+		calculateTaskProgressPercent,
+		formatTaskRemainingText,
+		getTaskStatusIcon
+	} from '$lib/utils/progress';
+	import type { Routine, Task, RoutineSession, TaskProgress } from '$lib/db/types';
 
 	interface TodayRoutine {
 		routine: Routine;
@@ -16,6 +21,7 @@
 		totalDuration: number;
 		completedTasks: number;
 		activeTask?: Task;
+		activeTaskProgress?: TaskProgress;
 	}
 
 	let todayRoutines = $state<TodayRoutine[]>([]);
@@ -26,6 +32,8 @@
 		month: 'long',
 		day: 'numeric'
 	});
+
+	const circumference = 2 * Math.PI * 11; // r=11, circumference ~= 69.115
 
 	onMount(() => {
 		loadTodayRoutines();
@@ -57,6 +65,7 @@
 
 				// Determine active task (from session.activeTaskId or first non-completed task)
 				let activeTask: Task | undefined;
+				let activeTaskProgress: TaskProgress | undefined;
 				if (session.activeTaskId) {
 					activeTask = tasks.find((t) => t.id === session.activeTaskId);
 				}
@@ -66,8 +75,19 @@
 					);
 					activeTask = tasks.find((t) => !completedTaskIds.has(t.id!)) ?? tasks[0];
 				}
+				if (activeTask) {
+					activeTaskProgress = progressEntries.find((p) => p.taskId === activeTask.id);
+				}
 
-				items.push({ routine, tasks, session, totalDuration, completedTasks, activeTask });
+				items.push({
+					routine,
+					tasks,
+					session,
+					totalDuration,
+					completedTasks,
+					activeTask,
+					activeTaskProgress
+				});
 			}
 
 			todayRoutines = items;
@@ -76,6 +96,32 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	function getTaskPercent(item: TodayRoutine): number {
+		if (!item.activeTask) return 0;
+		return calculateTaskProgressPercent(
+			item.activeTaskProgress?.elapsedSeconds ?? 0,
+			item.activeTask.duration
+		);
+	}
+
+	function getTaskRemaining(item: TodayRoutine): string {
+		if (!item.activeTask) return '';
+		const isCompleted = item.activeTaskProgress?.status === 'completed';
+		return formatTaskRemainingText(
+			item.activeTaskProgress?.elapsedSeconds ?? 0,
+			item.activeTask.duration,
+			isCompleted
+		);
+	}
+
+	function getTaskIcon(item: TodayRoutine): string {
+		const isCompleted = item.activeTaskProgress?.status === 'completed';
+		return getTaskStatusIcon(
+			item.activeTaskProgress?.elapsedSeconds ?? 0,
+			isCompleted
+		);
 	}
 
 	function getProgress(item: TodayRoutine): number {
@@ -133,8 +179,26 @@
 
 					{#if item.activeTask && item.session.status !== 'completed'}
 						<div class="active-task-pill">
-							<span class="active-dot">▶</span>
-							<span class="active-task-title label-medium">{item.activeTask.title}</span>
+							<div class="mini-progress-ring">
+								<svg viewBox="0 0 28 28" class="mini-ring-svg">
+									<circle cx="14" cy="14" r="11" class="ring-bg" />
+									<circle
+										cx="14"
+										cy="14"
+										r="11"
+										class="ring-fill"
+										class:completed={item.activeTaskProgress?.status === 'completed'}
+										stroke-dasharray={circumference}
+										stroke-dashoffset={circumference * (1 - getTaskPercent(item) / 100)}
+										transform="rotate(-90 14 14)"
+									/>
+								</svg>
+								<span class="mini-ring-icon">{getTaskIcon(item)}</span>
+							</div>
+							<div class="active-task-texts">
+								<span class="active-task-title label-medium">{item.activeTask.title}</span>
+								<span class="active-task-time label-small">· {getTaskRemaining(item)}</span>
+							</div>
 						</div>
 					{/if}
 
@@ -253,21 +317,79 @@
 	.active-task-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 4px 10px;
-		background-color: var(--md-sys-color-surface-container);
-		border-radius: var(--md-sys-shape-corner-small);
+		gap: 8px;
+		padding: 4px 10px 4px 6px;
+		background-color: var(--md-sys-color-surface-container-highest);
+		border-radius: var(--md-sys-shape-corner-full);
 		align-self: flex-start;
+		max-width: 100%;
 	}
 
-	.active-dot {
-		font-size: 0.75rem;
+	.mini-progress-ring {
+		position: relative;
+		width: 24px;
+		height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.mini-ring-svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.ring-bg {
+		fill: none;
+		stroke: var(--md-sys-color-outline-variant);
+		stroke-width: 3;
+		opacity: 0.5;
+	}
+
+	.ring-fill {
+		fill: none;
+		stroke: var(--md-sys-color-primary);
+		stroke-width: 3;
+		stroke-linecap: round;
+		transition: stroke-dashoffset 0.3s ease;
+	}
+
+	.ring-fill.completed {
+		stroke: #4caf50;
+	}
+
+	.mini-ring-icon {
+		position: absolute;
+		font-size: 0.65rem;
+		line-height: 1;
 		color: var(--md-sys-color-primary);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.active-task-texts {
+		display: flex;
+		align-items: baseline;
+		gap: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.active-task-title {
 		color: var(--md-sys-color-on-surface);
 		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.active-task-time {
+		color: var(--md-sys-color-on-surface-variant);
+		font-size: 0.75rem;
+		flex-shrink: 0;
 	}
 
 	.card-progress {
