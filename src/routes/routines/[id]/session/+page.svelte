@@ -20,8 +20,10 @@
 		resumeTimer,
 		pauseTimer,
 		completeTask,
+		addExtraTime,
 		getTimerState
 	} from '$lib/stores/timer.svelte';
+	import { updateTask } from '$lib/db/tasks';
 	import { openTaskLink, describeLinkType } from '$lib/utils/links';
 	import { formatTime, formatDuration } from '$lib/utils/time';
 	import { notifyRoutineComplete } from '$lib/utils/notifications';
@@ -39,15 +41,52 @@
 	let loading = $state(true);
 	let allCompleted = $state(false);
 
+	// Task Completion & Extra Time Modal state
+	let showCompletionModal = $state(false);
+	let templateDurationMinutes = $state(5);
+	let updateFutureTemplate = $state(false);
+	let prevTimerStatus = $state<string>('idle');
+
 	const timer = getTimerState();
 	const routineId = $derived(Number($page.params.id));
 
+	// Trigger completion modal when timer transitions to 'completed'
+	$effect(() => {
+		const currentStatus = timer.status;
+		if (prevTimerStatus !== 'completed' && currentStatus === 'completed' && activeTaskIndex >= 0) {
+			const currentItem = taskItems[activeTaskIndex];
+			if (currentItem) {
+				templateDurationMinutes = Math.max(1, Math.round(timer.totalDuration / 60));
+				updateFutureTemplate = false;
+				showCompletionModal = true;
+			}
+		}
+		prevTimerStatus = currentStatus;
+	});
+
+	const handleSWMessage = async (event: MessageEvent) => {
+		if (!event.data) return;
+		if (event.data.type === 'NOTIFICATION_ADD_EXTRA_MINUTES') {
+			const minutes = Number(event.data.minutes) || 2;
+			await handleAddExtraMinutes(minutes);
+		} else if (event.data.type === 'NOTIFICATION_TASK_DONE') {
+			handleCompleteTaskClick();
+		}
+	};
+
 	onMount(async () => {
 		await loadSessionData();
+
+		if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+			navigator.serviceWorker.addEventListener('message', handleSWMessage);
+		}
 	});
 
 	onDestroy(() => {
-		// Don't reset — timer continues in background
+		if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+			navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+		}
+		// Don't reset timer — timer continues in background
 	});
 
 	async function loadSessionData() {
@@ -172,21 +211,48 @@
 		}
 	}
 
-	async function handleCompleteTask() {
+	function handleCompleteTaskClick() {
+		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
+			templateDurationMinutes = Math.max(1, Math.round(timer.totalDuration / 60));
+			updateFutureTemplate = false;
+			showCompletionModal = true;
+		}
+	}
+
+	async function handleAddExtraMinutes(minutes: number) {
+		showCompletionModal = false;
+		await addExtraTime(minutes * 60);
+		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
+			taskItems[activeTaskIndex].progress.status = 'running';
+			taskItems[activeTaskIndex].task.duration = timer.totalDuration;
+		}
+	}
+
+	async function confirmCompleteTask() {
+		showCompletionModal = false;
+		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
+			const currentItem = taskItems[activeTaskIndex];
+			if (updateFutureTemplate && currentItem.task.id) {
+				const newDurationSeconds = templateDurationMinutes * 60;
+				await updateTask(currentItem.task.id, { duration: newDurationSeconds });
+				currentItem.task.duration = newDurationSeconds;
+			}
+		}
+
 		await completeTask();
+		await refreshTaskList();
+
 		// Look for next pending task
 		const nextPending = taskItems.findIndex(
 			(t, i) => i !== activeTaskIndex && t.progress.status !== 'completed'
 		);
 		if (nextPending >= 0) {
-			activeTaskIndex = nextPending;
-			const nextItem = taskItems[nextPending];
-			if (session?.id && nextItem?.task?.id) {
-				await setActiveTaskForSession(session.id, nextItem.task.id);
-				session.activeTaskId = nextItem.task.id;
-			}
+			await selectTask(nextPending);
 		}
-		await refreshTaskList();
+	}
+
+	async function handleCompleteTask() {
+		handleCompleteTaskClick();
 	}
 
 	async function handleRedoTask() {
@@ -506,6 +572,85 @@
 				</div>
 			</div>
 		{/if}
+	{/if}
+
+	{#if showCompletionModal && activeTaskIndex >= 0 && taskItems[activeTaskIndex]}
+		<div
+			class="modal-backdrop"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			onclick={(e) => {
+				if (e.target === e.currentTarget) showCompletionModal = false;
+			}}
+			onkeydown={(e) => {
+				if (e.key === 'Escape') showCompletionModal = false;
+			}}
+		>
+			<div class="completion-dialog">
+				<div class="completion-header">
+					<span class="completion-emoji">🎉</span>
+					<div class="completion-title-group">
+						<h3 class="title-large">Task Finished!</h3>
+						<p class="body-medium task-name-label">{taskItems[activeTaskIndex].task.title}</p>
+					</div>
+				</div>
+
+				<!-- Extra time section -->
+				<div class="dialog-section">
+					<span class="label-medium section-label">Need more time? (Starts counting down immediately)</span>
+					<div class="extra-time-chips">
+						<button class="chip-btn" onclick={() => handleAddExtraMinutes(1)}>+1 min</button>
+						<button class="chip-btn" onclick={() => handleAddExtraMinutes(2)}>+2 min</button>
+						<button class="chip-btn" onclick={() => handleAddExtraMinutes(5)}>+5 min</button>
+						<button class="chip-btn" onclick={() => handleAddExtraMinutes(10)}>+10 min</button>
+					</div>
+				</div>
+
+				<!-- Template duration update section -->
+				<div class="dialog-section">
+					<span class="label-medium section-label">Future Routine Duration</span>
+					<div class="duration-stepper">
+						<button
+							class="stepper-btn"
+							onclick={() => (templateDurationMinutes = Math.max(1, templateDurationMinutes - 1))}
+							aria-label="Decrease minutes"
+						>
+							−
+						</button>
+						<span class="stepper-value title-medium">{templateDurationMinutes} min</span>
+						<button
+							class="stepper-btn"
+							onclick={() => (templateDurationMinutes = templateDurationMinutes + 1)}
+							aria-label="Increase minutes"
+						>
+							+
+						</button>
+					</div>
+
+					<label class="template-checkbox-row">
+						<input
+							type="checkbox"
+							bind:checked={updateFutureTemplate}
+							class="template-checkbox"
+						/>
+						<span class="body-medium">
+							Update this task to <strong>{templateDurationMinutes} min</strong> for future routine sessions
+						</span>
+					</label>
+				</div>
+
+				<!-- Actions -->
+				<div class="dialog-actions">
+					<button class="btn-subtle" onclick={() => (showCompletionModal = false)}>
+						Dismiss
+					</button>
+					<button class="btn-filled-primary" onclick={confirmCompleteTask}>
+						✓ Complete Task
+					</button>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>
 
@@ -915,5 +1060,193 @@
 		color: var(--md-sys-color-on-primary);
 		font: var(--md-sys-typescale-label-large);
 		cursor: pointer;
+	}
+
+	/* Completion Modal */
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background-color: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 16px;
+		backdrop-filter: blur(2px);
+	}
+
+	.completion-dialog {
+		background-color: var(--md-sys-color-surface-container-high, #ece6f0);
+		color: var(--md-sys-color-on-surface);
+		border-radius: var(--md-sys-shape-corner-large);
+		padding: 24px;
+		width: 100%;
+		max-width: 420px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		box-shadow: var(--md-sys-elevation-2);
+		animation: dialogPop 0.2s cubic-bezier(0.2, 0, 0, 1);
+	}
+
+	@keyframes dialogPop {
+		from {
+			opacity: 0;
+			transform: scale(0.95);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
+
+	.completion-header {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.completion-emoji {
+		font-size: 2.25rem;
+		line-height: 1;
+	}
+
+	.completion-title-group {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.task-name-label {
+		color: var(--md-sys-color-on-surface-variant);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.dialog-section {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 12px 14px;
+		background-color: var(--md-sys-color-surface-container);
+		border-radius: var(--md-sys-shape-corner-medium);
+	}
+
+	.section-label {
+		color: var(--md-sys-color-on-surface-variant);
+	}
+
+	.extra-time-chips {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 8px;
+	}
+
+	.chip-btn {
+		padding: 8px 4px;
+		border: 1px solid var(--md-sys-color-outline-variant);
+		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-surface);
+		color: var(--md-sys-color-primary);
+		font: var(--md-sys-typescale-label-medium);
+		font-weight: 600;
+		cursor: pointer;
+		text-align: center;
+		transition:
+			background-color 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	.chip-btn:hover {
+		background-color: var(--md-sys-color-primary-container);
+		border-color: var(--md-sys-color-primary);
+	}
+
+	.duration-stepper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+	}
+
+	.stepper-btn {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		border: 1px solid var(--md-sys-color-outline);
+		background-color: var(--md-sys-color-surface);
+		color: var(--md-sys-color-on-surface);
+		font-size: 1.25rem;
+		line-height: 1;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: background-color 0.2s ease;
+	}
+
+	.stepper-btn:hover {
+		background-color: var(--md-sys-color-surface-container-highest);
+	}
+
+	.stepper-value {
+		min-width: 64px;
+		text-align: center;
+		font-weight: 600;
+	}
+
+	.template-checkbox-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+		margin-top: 4px;
+	}
+
+	.template-checkbox {
+		width: 18px;
+		height: 18px;
+		accent-color: var(--md-sys-color-primary);
+		cursor: pointer;
+	}
+
+	.dialog-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 12px;
+		margin-top: 4px;
+	}
+
+	.btn-subtle {
+		padding: 10px 18px;
+		background: none;
+		border: none;
+		border-radius: var(--md-sys-shape-corner-full);
+		color: var(--md-sys-color-on-surface-variant);
+		font: var(--md-sys-typescale-label-large);
+		cursor: pointer;
+	}
+
+	.btn-subtle:hover {
+		background-color: var(--md-sys-color-surface-container);
+	}
+
+	.btn-filled-primary {
+		padding: 10px 20px;
+		background-color: var(--md-sys-color-primary);
+		color: var(--md-sys-color-on-primary);
+		border: none;
+		border-radius: var(--md-sys-shape-corner-full);
+		font: var(--md-sys-typescale-label-large);
+		cursor: pointer;
+		box-shadow: var(--md-sys-elevation-1);
+		transition: box-shadow 0.2s ease;
+	}
+
+	.btn-filled-primary:hover {
+		box-shadow: var(--md-sys-elevation-2);
 	}
 </style>

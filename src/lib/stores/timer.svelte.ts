@@ -97,7 +97,7 @@ export async function loadTask(
 				elapsedSeconds: totalDuration,
 				lastResumedAt: undefined
 			});
-			notifyTaskComplete(taskTitle);
+			notifyTaskComplete(taskTitle, taskId);
 		} else {
 			timerState.elapsedSeconds = elapsed;
 			timerState.remainingSeconds = totalDuration - elapsed;
@@ -170,7 +170,30 @@ async function complete() {
 		lastResumedAt: undefined
 	});
 
-	notifyTaskComplete(timerState.taskTitle);
+	notifyTaskComplete(timerState.taskTitle, timerState.taskId);
+}
+
+/**
+ * Adds extra time (in seconds) to the current task and immediately resumes counting down.
+ * When the extra time completes, the timer will reach 0 again, triggering another completion alert.
+ */
+export async function addExtraTime(additionalSeconds: number) {
+	if (additionalSeconds <= 0) return;
+	stopInterval();
+
+	timerState.totalDuration += additionalSeconds;
+	timerState.remainingSeconds += additionalSeconds;
+	timerState.status = 'running';
+	lastResumedAt = new Date();
+	baseElapsed = timerState.elapsedSeconds;
+
+	await persistProgress({
+		status: 'running',
+		lastResumedAt,
+		elapsedSeconds: baseElapsed
+	});
+
+	startInterval();
 }
 
 /**

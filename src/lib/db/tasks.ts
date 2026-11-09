@@ -13,6 +13,10 @@ export async function addTask(data: Omit<Task, 'id' | 'sortOrder'>): Promise<num
 	return id as number;
 }
 
+export async function getTask(id: number): Promise<Task | undefined> {
+	return db.tasks.get(id);
+}
+
 export async function updateTask(id: number, data: Partial<Task>): Promise<void> {
 	await db.tasks.update(id, data);
 }

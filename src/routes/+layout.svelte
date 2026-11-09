@@ -21,23 +21,20 @@
 		// Register PWA service worker
 		if ('serviceWorker' in navigator) {
 			try {
-				const { pwaInfo } = await import('virtual:pwa-info');
-				if (pwaInfo) {
-					const { registerSW } = await import('virtual:pwa-register');
-					registerSW({
-						immediate: true,
-						onNeedRefresh() {
-							if (confirm('New version available. Reload?')) {
-								window.location.reload();
-							}
-						},
-						onOfflineReady() {
-							console.log('Routine is ready to work offline');
+				const { registerSW } = await import('virtual:pwa-register');
+				registerSW({
+					immediate: true,
+					onNeedRefresh() {
+						if (confirm('New version available. Reload?')) {
+							window.location.reload();
 						}
-					});
-				}
-			} catch {
-				// PWA modules not available in dev
+					},
+					onOfflineReady() {
+						console.log('Routine is ready to work offline');
+					}
+				});
+			} catch (e) {
+				console.error('PWA service worker registration error:', e);
 			}
 		}
 	});

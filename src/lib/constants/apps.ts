@@ -48,6 +48,13 @@ export const PRESET_APPS: PresetApp[] = [
 		icon: '📚',
 		packageName: 'com.magoosh.vocabulary.builder',
 		fallbackUrl: 'https://play.google.com/store/apps/details?id=com.magoosh.vocabulary.builder'
+	},
+	{
+		id: 'prayermate',
+		name: 'PrayerMate',
+		icon: '🙏',
+		packageName: 'net.geero.prayermate',
+		fallbackUrl: 'https://play.google.com/store/apps/details?id=net.geero.prayermate'
 	}
 ];
 

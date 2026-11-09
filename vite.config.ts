@@ -7,7 +7,7 @@ export default defineConfig({
 		sveltekit(),
 		SvelteKitPWA({
 			registerType: 'autoUpdate',
-			injectRegister: 'auto',
+			injectRegister: false,
 			manifest: {
 				name: 'Routine',
 				short_name: 'Routine',
@@ -16,13 +16,21 @@ export default defineConfig({
 				background_color: '#FFFBFE',
 				display: 'standalone',
 				orientation: 'portrait',
+				id: './',
 				start_url: './',
 				scope: './',
 				icons: [
 					{
 						src: 'pwa-192x192.png',
 						sizes: '192x192',
-						type: 'image/png'
+						type: 'image/png',
+						purpose: 'any'
+					},
+					{
+						src: 'pwa-maskable-192x192.png',
+						sizes: '192x192',
+						type: 'image/png',
+						purpose: 'maskable'
 					},
 					{
 						src: 'pwa-512x512.png',
@@ -35,16 +43,12 @@ export default defineConfig({
 						sizes: '512x512',
 						type: 'image/png',
 						purpose: 'maskable'
-					},
-					{
-						src: 'pwa-512x512.svg',
-						sizes: '512x512',
-						type: 'image/svg+xml'
 					}
 				],
 				share_target: {
 					action: './',
 					method: 'GET',
+					enctype: 'application/x-www-form-urlencoded',
 					params: {
 						title: 'share_title',
 						text: 'share_text',
@@ -53,7 +57,8 @@ export default defineConfig({
 				}
 			},
 			workbox: {
-				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}']
+				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+				importScripts: ['sw-notifications.js']
 			},
 			devOptions: {
 				enabled: true,

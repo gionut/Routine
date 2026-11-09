@@ -14,8 +14,8 @@ import { addTask, getTasksForRoutine } from '../src/lib/db/tasks.js';
 import { getOrCreateTodaySession, syncTaskProgressForSession, getTaskProgressForSession } from '../src/lib/db/sessions.js';
 import type { Task } from '../src/lib/db/types.js';
 
-test('Apps: all 6 preset apps are defined with packages and valid fallbacks', () => {
-	assert.strictEqual(PRESET_APPS.length, 6);
+test('Apps: all 7 preset apps are defined with packages and valid fallbacks', () => {
+	assert.strictEqual(PRESET_APPS.length, 7);
 
 	const expectedApps = [
 		{ id: 'kindle', name: 'Amazon Kindle', pkg: 'com.amazon.kindle', icon: '📖' },
@@ -23,7 +23,8 @@ test('Apps: all 6 preset apps are defined with packages and valid fallbacks', ()
 		{ id: 'groundnews', name: 'Ground News', pkg: 'com.checkitt', icon: '📰' },
 		{ id: 'perfectear', name: 'Perfect Ear', pkg: 'com.evilduck.musiciankit', icon: '🎵' },
 		{ id: 'crossword', name: 'Crossword', pkg: 'com.redstonegames.crossword.en', icon: '🧩' },
-		{ id: 'vocab', name: 'Vocabulary Builder', pkg: 'com.magoosh.vocabulary.builder', icon: '📚' }
+		{ id: 'vocab', name: 'Vocabulary Builder', pkg: 'com.magoosh.vocabulary.builder', icon: '📚' },
+		{ id: 'prayermate', name: 'PrayerMate', pkg: 'net.geero.prayermate', icon: '🙏' }
 	];
 
 	for (const expected of expectedApps) {
