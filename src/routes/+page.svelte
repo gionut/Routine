@@ -91,12 +91,47 @@
 				});
 			}
 
+			// Sort into 3 strict tiers:
+			// 1. In-Progress / Running (started but < 100%)
+			// 2. Not Started (0 tasks completed, 0s elapsed)
+			// 3. Completed (100% tasks completed)
+			items.sort((a, b) => {
+				const tierA = getRoutineTier(a);
+				const tierB = getRoutineTier(b);
+				if (tierA !== tierB) return tierA - tierB;
+				return a.routine.sortOrder - b.routine.sortOrder;
+			});
+
 			todayRoutines = items;
 		} catch (err) {
 			console.error('Failed to load routines:', err);
 		} finally {
 			loading = false;
 		}
+	}
+
+	function isItemCompleted(item: TodayRoutine): boolean {
+		return item.tasks.length > 0 && item.completedTasks === item.tasks.length;
+	}
+
+	function isItemInProgress(item: TodayRoutine): boolean {
+		if (isItemCompleted(item)) return false;
+		if (item.completedTasks > 0) return true;
+		if ((item.activeTaskProgress?.elapsedSeconds ?? 0) > 0) return true;
+		if (item.session.status === 'in-progress') return true;
+		return false;
+	}
+
+	function getRoutineTier(item: TodayRoutine): number {
+		if (isItemInProgress(item)) return 1;
+		if (!isItemCompleted(item)) return 2;
+		return 3;
+	}
+
+	function formatTimeOnly(date: Date | string | undefined): string {
+		if (!date) return '';
+		const d = new Date(date);
+		return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 	}
 
 	function getTaskPercent(item: TodayRoutine): number {
@@ -110,10 +145,14 @@
 	function getTaskRemaining(item: TodayRoutine): string {
 		if (!item.activeTask) return '';
 		const isCompleted = item.activeTaskProgress?.status === 'completed';
+		if (isCompleted) {
+			const timeStr = formatTimeOnly(item.activeTaskProgress?.completedAt);
+			return timeStr ? `Done at ${timeStr}` : 'Done';
+		}
 		return formatTaskRemainingText(
 			item.activeTaskProgress?.elapsedSeconds ?? 0,
 			item.activeTask.duration,
-			isCompleted
+			false
 		);
 	}
 
@@ -131,14 +170,14 @@
 	}
 
 	function getStatusLabel(item: TodayRoutine): string {
-		if (item.session.status === 'completed') return 'Completed ✓';
-		if (item.session.status === 'in-progress') return `${item.completedTasks}/${item.tasks.length} tasks`;
+		if (isItemCompleted(item)) return 'Completed ✓';
+		if (isItemInProgress(item)) return `${item.completedTasks}/${item.tasks.length} tasks`;
 		return 'Not started';
 	}
 
 	function getButtonLabel(item: TodayRoutine): string {
-		if (item.session.status === 'completed') return 'Review';
-		if (item.session.status === 'in-progress') return '▶ Continue';
+		if (isItemCompleted(item)) return 'Review';
+		if (isItemInProgress(item)) return '▶ Continue';
 		return '▶ Start';
 	}
 
@@ -178,7 +217,7 @@
 						</span>
 					</div>
 
-					{#if item.activeTask && item.session.status !== 'completed'}
+					{#if item.activeTask && !isItemCompleted(item)}
 						<div class="active-task-pill">
 							<div class="mini-progress-ring">
 								<svg viewBox="0 0 28 28" class="mini-ring-svg">
@@ -207,12 +246,12 @@
 						<div class="progress-bar">
 							<div
 								class="progress-fill"
-								class:completed={item.session.status === 'completed'}
+								class:completed={isItemCompleted(item)}
 								style="width: {getProgress(item)}%"
 							></div>
 						</div>
 						<span class="label-medium status-label"
-							class:completed-label={item.session.status === 'completed'}
+							class:completed-label={isItemCompleted(item)}
 						>
 							{getStatusLabel(item)}
 						</span>

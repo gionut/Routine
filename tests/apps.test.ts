@@ -45,6 +45,8 @@ test('Apps: buildAppIntentUrl constructs valid Chrome intent URI with encoded fa
 	const intentUrl = buildAppIntentUrl(kindle);
 
 	assert.ok(intentUrl.startsWith('intent:#Intent;'));
+	assert.ok(intentUrl.includes('action=android.intent.action.MAIN;'));
+	assert.ok(intentUrl.includes('category=android.intent.category.LAUNCHER;'));
 	assert.ok(intentUrl.includes('package=com.amazon.kindle;'));
 	assert.ok(intentUrl.includes('S.browser_fallback_url=https%3A%2F%2Fplay.google.com'));
 	assert.ok(intentUrl.endsWith(';end;'));

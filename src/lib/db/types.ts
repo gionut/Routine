@@ -50,6 +50,7 @@ export interface TaskProgress {
 	status: 'pending' | 'running' | 'paused' | 'completed';
 	linkState?: Record<string, unknown>;
 	lastResumedAt?: Date;
+	completedAt?: Date;
 }
 
 export interface StoredFile {

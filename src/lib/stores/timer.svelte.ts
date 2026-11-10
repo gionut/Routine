@@ -1,6 +1,8 @@
 import { db } from '$lib/db/database';
 import type { TaskProgress } from '$lib/db/types';
 import { notifyTaskComplete } from '$lib/utils/notifications';
+import { startAlarm, stopAlarm } from '$lib/utils/audioAlarm';
+import { acquireWakeLock, releaseWakeLock } from '$lib/utils/wakeLock';
 
 export interface TimerState {
 	progressId: number | null;
@@ -10,6 +12,8 @@ export interface TimerState {
 	elapsedSeconds: number;
 	remainingSeconds: number;
 	status: 'idle' | 'running' | 'paused' | 'completed';
+	completedAt?: Date;
+	justFinished: boolean;
 }
 
 const defaultState: TimerState = {
@@ -19,7 +23,9 @@ const defaultState: TimerState = {
 	totalDuration: 0,
 	elapsedSeconds: 0,
 	remainingSeconds: 0,
-	status: 'idle'
+	status: 'idle',
+	completedAt: undefined,
+	justFinished: false
 };
 
 let timerState = $state<TimerState>({ ...defaultState });
@@ -83,25 +89,33 @@ export async function loadTask(
 	timerState.totalDuration = totalDuration;
 	timerState.elapsedSeconds = baseElapsed;
 	timerState.remainingSeconds = Math.max(0, totalDuration - baseElapsed);
+	timerState.completedAt = progress.completedAt;
+	timerState.justFinished = false;
 
 	if (progress.status === 'running' && progress.lastResumedAt) {
 		// Timer was running when app was closed — recalculate elapsed
 		lastResumedAt = new Date(progress.lastResumedAt);
 		const elapsed = calculateElapsed();
 		if (elapsed >= totalDuration) {
+			const completedAt = new Date();
 			timerState.elapsedSeconds = totalDuration;
 			timerState.remainingSeconds = 0;
 			timerState.status = 'completed';
+			timerState.completedAt = completedAt;
+			timerState.justFinished = true;
 			await persistProgress({
 				status: 'completed',
 				elapsedSeconds: totalDuration,
+				completedAt,
 				lastResumedAt: undefined
 			});
+			startAlarm();
 			notifyTaskComplete(taskTitle, taskId);
 		} else {
 			timerState.elapsedSeconds = elapsed;
 			timerState.remainingSeconds = totalDuration - elapsed;
 			timerState.status = 'running';
+			acquireWakeLock();
 			startInterval();
 		}
 	} else if (progress.status === 'completed') {
@@ -122,6 +136,7 @@ export async function resumeTimer() {
 	lastResumedAt = new Date();
 	baseElapsed = timerState.elapsedSeconds;
 	timerState.status = 'running';
+	timerState.justFinished = false;
 
 	await persistProgress({
 		status: 'running',
@@ -129,6 +144,7 @@ export async function resumeTimer() {
 		elapsedSeconds: baseElapsed
 	});
 
+	acquireWakeLock();
 	startInterval();
 }
 
@@ -140,6 +156,8 @@ export async function pauseTimer() {
 
 	const elapsed = calculateElapsed();
 	stopInterval();
+	releaseWakeLock();
+	stopAlarm();
 
 	baseElapsed = elapsed;
 	lastResumedAt = null;
@@ -159,17 +177,23 @@ export async function pauseTimer() {
  */
 async function complete() {
 	stopInterval();
+	releaseWakeLock();
 
+	const completedAt = new Date();
 	timerState.elapsedSeconds = timerState.totalDuration;
 	timerState.remainingSeconds = 0;
 	timerState.status = 'completed';
+	timerState.completedAt = completedAt;
+	timerState.justFinished = true;
 
 	await persistProgress({
 		status: 'completed',
 		elapsedSeconds: timerState.totalDuration,
+		completedAt,
 		lastResumedAt: undefined
 	});
 
+	startAlarm();
 	notifyTaskComplete(timerState.taskTitle, timerState.taskId);
 }
 
@@ -180,10 +204,12 @@ async function complete() {
 export async function addExtraTime(additionalSeconds: number) {
 	if (additionalSeconds <= 0) return;
 	stopInterval();
+	stopAlarm();
 
 	timerState.totalDuration += additionalSeconds;
 	timerState.remainingSeconds += additionalSeconds;
 	timerState.status = 'running';
+	timerState.justFinished = false;
 	lastResumedAt = new Date();
 	baseElapsed = timerState.elapsedSeconds;
 
@@ -193,6 +219,7 @@ export async function addExtraTime(additionalSeconds: number) {
 		elapsedSeconds: baseElapsed
 	});
 
+	acquireWakeLock();
 	startInterval();
 }
 
@@ -200,7 +227,15 @@ export async function addExtraTime(additionalSeconds: number) {
  * Manually complete the task (user decides to move on).
  */
 export async function completeTask() {
+	stopAlarm();
 	await complete();
+}
+
+/**
+ * Acknowledge that the completion modal has handled this event.
+ */
+export function clearJustFinished() {
+	timerState.justFinished = false;
 }
 
 /**
@@ -208,6 +243,8 @@ export async function completeTask() {
  */
 export function resetTimer() {
 	stopInterval();
+	releaseWakeLock();
+	stopAlarm();
 	baseElapsed = 0;
 	lastResumedAt = null;
 	Object.assign(timerState, { ...defaultState });

@@ -64,7 +64,7 @@ export const PRESET_APPS: PresetApp[] = [
  */
 export function buildAppIntentUrl(app: PresetApp): string {
 	const encodedFallback = encodeURIComponent(app.fallbackUrl);
-	return `intent:#Intent;package=${app.packageName};S.browser_fallback_url=${encodedFallback};end;`;
+	return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${app.packageName};S.browser_fallback_url=${encodedFallback};end;`;
 }
 
 /**

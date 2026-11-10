@@ -21,8 +21,10 @@
 		pauseTimer,
 		completeTask,
 		addExtraTime,
+		clearJustFinished,
 		getTimerState
 	} from '$lib/stores/timer.svelte';
+	import { stopAlarm } from '$lib/utils/audioAlarm';
 	import { updateTask } from '$lib/db/tasks';
 	import { openTaskLink, describeLinkType } from '$lib/utils/links';
 	import { formatTime, formatDuration } from '$lib/utils/time';
@@ -45,15 +47,14 @@
 	let showCompletionModal = $state(false);
 	let templateDurationMinutes = $state(5);
 	let updateFutureTemplate = $state(false);
-	let prevTimerStatus = $state<string>('idle');
 
 	const timer = getTimerState();
 	const routineId = $derived(Number($page.params.id));
 
-	// Trigger completion modal when timer transitions to 'completed'
+	// Trigger completion modal ONLY when active countdown naturally finishes
 	$effect(() => {
-		const currentStatus = timer.status;
-		if (prevTimerStatus !== 'completed' && currentStatus === 'completed' && activeTaskIndex >= 0) {
+		if (timer.justFinished && activeTaskIndex >= 0) {
+			clearJustFinished();
 			const currentItem = taskItems[activeTaskIndex];
 			if (currentItem) {
 				templateDurationMinutes = Math.max(1, Math.round(timer.totalDuration / 60));
@@ -61,7 +62,6 @@
 				showCompletionModal = true;
 			}
 		}
-		prevTimerStatus = currentStatus;
 	});
 
 	const handleSWMessage = async (event: MessageEvent) => {
@@ -83,11 +83,18 @@
 	});
 
 	onDestroy(() => {
+		stopAlarm();
 		if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
 			navigator.serviceWorker.removeEventListener('message', handleSWMessage);
 		}
 		// Don't reset timer — timer continues in background
 	});
+
+	function formatCompletedTime(date?: Date | string): string {
+		if (!date) return '';
+		const d = new Date(date);
+		return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+	}
 
 	async function loadSessionData() {
 		try {
@@ -137,7 +144,8 @@
 				elapsedSeconds: tp.elapsedSeconds,
 				status: tp.status,
 				linkState: tp.linkState,
-				lastResumedAt: tp.lastResumedAt
+				lastResumedAt: tp.lastResumedAt,
+				completedAt: tp.completedAt
 			}
 		}));
 
@@ -180,6 +188,7 @@
 		if (index < 0 || index >= taskItems.length) return;
 		if (index === activeTaskIndex) return;
 
+		stopAlarm();
 		// Pause current timer if running
 		if (timer.status === 'running') {
 			await pauseTimer();
@@ -212,6 +221,7 @@
 	}
 
 	function handleCompleteTaskClick() {
+		stopAlarm();
 		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
 			templateDurationMinutes = Math.max(1, Math.round(timer.totalDuration / 60));
 			updateFutureTemplate = false;
@@ -220,6 +230,7 @@
 	}
 
 	async function handleAddExtraMinutes(minutes: number) {
+		stopAlarm();
 		showCompletionModal = false;
 		await addExtraTime(minutes * 60);
 		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
@@ -229,6 +240,7 @@
 	}
 
 	async function confirmCompleteTask() {
+		stopAlarm();
 		showCompletionModal = false;
 		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
 			const currentItem = taskItems[activeTaskIndex];
@@ -392,7 +404,12 @@
 						<span class="chip-status-icon">
 							{#if item.progress.status === 'completed'}✓{:else}{i + 1}{/if}
 						</span>
-						<span class="chip-label">{item.task.title}</span>
+						<span class="chip-label">
+							{item.task.title}
+							{#if item.progress.status === 'completed' && item.progress.completedAt}
+								<span class="chip-completed-time">· {formatCompletedTime(item.progress.completedAt)}</span>
+							{/if}
+						</span>
 					</button>
 				{/each}
 			</div>
@@ -558,7 +575,7 @@
 								<span class="task-item-meta label-medium">
 									{formatDuration(item.task.duration)}
 									{#if item.progress.status === 'completed'}
-										· Done
+										· Done {#if item.progress.completedAt}({formatCompletedTime(item.progress.completedAt)}){/if}
 									{:else if item.progress.elapsedSeconds > 0}
 										· {formatDuration(item.progress.elapsedSeconds)} done
 									{/if}
@@ -581,10 +598,16 @@
 			aria-modal="true"
 			tabindex="-1"
 			onclick={(e) => {
-				if (e.target === e.currentTarget) showCompletionModal = false;
+				if (e.target === e.currentTarget) {
+					stopAlarm();
+					showCompletionModal = false;
+				}
 			}}
 			onkeydown={(e) => {
-				if (e.key === 'Escape') showCompletionModal = false;
+				if (e.key === 'Escape') {
+					stopAlarm();
+					showCompletionModal = false;
+				}
 			}}
 		>
 			<div class="completion-dialog">
@@ -642,7 +665,7 @@
 
 				<!-- Actions -->
 				<div class="dialog-actions">
-					<button class="btn-subtle" onclick={() => (showCompletionModal = false)}>
+					<button class="btn-subtle" onclick={() => { stopAlarm(); showCompletionModal = false; }}>
 						Dismiss
 					</button>
 					<button class="btn-filled-primary" onclick={confirmCompleteTask}>
