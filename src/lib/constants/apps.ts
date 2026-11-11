@@ -55,6 +55,13 @@ export const PRESET_APPS: PresetApp[] = [
 		icon: '🙏',
 		packageName: 'net.geero.prayermate',
 		fallbackUrl: 'https://play.google.com/store/apps/details?id=net.geero.prayermate'
+	},
+	{
+		id: 'talkpal',
+		name: 'Talkpal',
+		icon: '🗣️',
+		packageName: 'ai.talkpal',
+		fallbackUrl: 'https://play.google.com/store/apps/details?id=ai.talkpal'
 	}
 ];
 

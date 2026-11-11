@@ -14,8 +14,8 @@ import { addTask, getTasksForRoutine } from '../src/lib/db/tasks.js';
 import { getOrCreateTodaySession, syncTaskProgressForSession, getTaskProgressForSession } from '../src/lib/db/sessions.js';
 import type { Task } from '../src/lib/db/types.js';
 
-test('Apps: all 7 preset apps are defined with packages and valid fallbacks', () => {
-	assert.strictEqual(PRESET_APPS.length, 7);
+test('Apps: all 8 preset apps are defined with packages and valid fallbacks', () => {
+	assert.strictEqual(PRESET_APPS.length, 8);
 
 	const expectedApps = [
 		{ id: 'kindle', name: 'Amazon Kindle', pkg: 'com.amazon.kindle', icon: '📖' },
@@ -24,7 +24,8 @@ test('Apps: all 7 preset apps are defined with packages and valid fallbacks', ()
 		{ id: 'perfectear', name: 'Perfect Ear', pkg: 'com.evilduck.musiciankit', icon: '🎵' },
 		{ id: 'crossword', name: 'Crossword', pkg: 'com.redstonegames.crossword.en', icon: '🧩' },
 		{ id: 'vocab', name: 'Vocabulary Builder', pkg: 'com.magoosh.vocabulary.builder', icon: '📚' },
-		{ id: 'prayermate', name: 'PrayerMate', pkg: 'net.geero.prayermate', icon: '🙏' }
+		{ id: 'prayermate', name: 'PrayerMate', pkg: 'net.geero.prayermate', icon: '🙏' },
+		{ id: 'talkpal', name: 'Talkpal', pkg: 'ai.talkpal', icon: '🗣️' }
 	];
 
 	for (const expected of expectedApps) {
@@ -50,6 +51,13 @@ test('Apps: buildAppIntentUrl constructs valid Chrome intent URI with encoded fa
 	assert.ok(intentUrl.includes('package=com.amazon.kindle;'));
 	assert.ok(intentUrl.includes('S.browser_fallback_url=https%3A%2F%2Fplay.google.com'));
 	assert.ok(intentUrl.endsWith(';end;'));
+
+	const talkpal = getPresetAppById('talkpal')!;
+	const talkpalIntent = buildAppIntentUrl(talkpal);
+	assert.ok(talkpalIntent.includes('package=ai.talkpal;'));
+	assert.ok(talkpalIntent.includes('action=android.intent.action.MAIN;'));
+	assert.ok(talkpalIntent.includes('category=android.intent.category.LAUNCHER;'));
+	assert.ok(talkpalIntent.includes('S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dai.talkpal'));
 });
 
 test('Apps: buildTaskLink and describeLinkType format app tasks correctly', () => {

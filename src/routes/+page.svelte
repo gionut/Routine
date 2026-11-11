@@ -13,6 +13,7 @@
 		formatTaskRemainingText,
 		getTaskStatusIcon
 	} from '$lib/utils/progress';
+	import { getTimerState } from '$lib/stores/timer.svelte';
 	import type { Routine, Task, RoutineSession, TaskProgress } from '$lib/db/types';
 
 	interface TodayRoutine {
@@ -25,6 +26,7 @@
 		activeTaskProgress?: TaskProgress;
 	}
 
+	const timer = getTimerState();
 	let todayRoutines = $state<TodayRoutine[]>([]);
 	let loading = $state(true);
 
@@ -35,6 +37,17 @@
 	});
 
 	const circumference = 2 * Math.PI * 11; // r=11, circumference ~= 69.115
+
+	let sortedTodayRoutines = $derived.by(() => {
+		const list = [...todayRoutines];
+		list.sort((a, b) => {
+			const tierA = getRoutineTier(a);
+			const tierB = getRoutineTier(b);
+			if (tierA !== tierB) return tierA - tierB;
+			return a.routine.sortOrder - b.routine.sortOrder;
+		});
+		return list;
+	});
 
 	onMount(() => {
 		loadTodayRoutines();
@@ -91,17 +104,6 @@
 				});
 			}
 
-			// Sort into 3 strict tiers:
-			// 1. In-Progress / Running (started but < 100%)
-			// 2. Not Started (0 tasks completed, 0s elapsed)
-			// 3. Completed (100% tasks completed)
-			items.sort((a, b) => {
-				const tierA = getRoutineTier(a);
-				const tierB = getRoutineTier(b);
-				if (tierA !== tierB) return tierA - tierB;
-				return a.routine.sortOrder - b.routine.sortOrder;
-			});
-
 			todayRoutines = items;
 		} catch (err) {
 			console.error('Failed to load routines:', err);
@@ -114,18 +116,33 @@
 		return item.tasks.length > 0 && item.completedTasks === item.tasks.length;
 	}
 
-	function isItemInProgress(item: TodayRoutine): boolean {
+	function isItemActiveRunning(item: TodayRoutine): boolean {
 		if (isItemCompleted(item)) return false;
+		if (timer.status === 'running' && item.activeTask && timer.taskId === item.activeTask.id) {
+			return true;
+		}
+		return item.activeTaskProgress?.status === 'running';
+	}
+
+	function isItemPausedOrInProgress(item: TodayRoutine): boolean {
+		if (isItemCompleted(item)) return false;
+		if (isItemActiveRunning(item)) return false;
 		if (item.completedTasks > 0) return true;
 		if ((item.activeTaskProgress?.elapsedSeconds ?? 0) > 0) return true;
+		if (item.activeTaskProgress?.status === 'paused') return true;
 		if (item.session.status === 'in-progress') return true;
 		return false;
 	}
 
+	function isItemInProgress(item: TodayRoutine): boolean {
+		return isItemActiveRunning(item) || isItemPausedOrInProgress(item);
+	}
+
 	function getRoutineTier(item: TodayRoutine): number {
-		if (isItemInProgress(item)) return 1;
-		if (!isItemCompleted(item)) return 2;
-		return 3;
+		if (isItemActiveRunning(item)) return 1;
+		if (isItemPausedOrInProgress(item)) return 2;
+		if (!isItemCompleted(item)) return 3;
+		return 4;
 	}
 
 	function formatTimeOnly(date: Date | string | undefined): string {
@@ -195,7 +212,7 @@
 		<div class="loading-state">
 			<p class="body-large">Loading routines...</p>
 		</div>
-	{:else if todayRoutines.length === 0}
+	{:else if sortedTodayRoutines.length === 0}
 		<div class="empty-state">
 			<div class="empty-icon">🎯</div>
 			<p class="title-medium">No routines scheduled for today</p>
@@ -208,7 +225,7 @@
 		</div>
 	{:else}
 		<div class="routine-list">
-			{#each todayRoutines as item (item.routine.id)}
+			{#each sortedTodayRoutines as item (item.routine.id)}
 				<button class="routine-card" onclick={() => startRoutine(item)}>
 					<div class="card-header">
 						<h3 class="title-medium">{item.routine.title}</h3>

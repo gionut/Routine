@@ -1,6 +1,6 @@
 import { db } from '$lib/db/database';
 import type { TaskProgress } from '$lib/db/types';
-import { notifyTaskComplete } from '$lib/utils/notifications';
+import { notifyTaskComplete, dismissTaskNotification } from '$lib/utils/notifications';
 import { startAlarm, stopAlarm } from '$lib/utils/audioAlarm';
 import { acquireWakeLock, releaseWakeLock } from '$lib/utils/wakeLock';
 
@@ -46,7 +46,7 @@ function tick() {
 	timerState.remainingSeconds = Math.max(0, timerState.totalDuration - elapsed);
 
 	if (elapsed >= timerState.totalDuration) {
-		complete();
+		completeNatural();
 	}
 }
 
@@ -97,20 +97,7 @@ export async function loadTask(
 		lastResumedAt = new Date(progress.lastResumedAt);
 		const elapsed = calculateElapsed();
 		if (elapsed >= totalDuration) {
-			const completedAt = new Date();
-			timerState.elapsedSeconds = totalDuration;
-			timerState.remainingSeconds = 0;
-			timerState.status = 'completed';
-			timerState.completedAt = completedAt;
-			timerState.justFinished = true;
-			await persistProgress({
-				status: 'completed',
-				elapsedSeconds: totalDuration,
-				completedAt,
-				lastResumedAt: undefined
-			});
-			startAlarm();
-			notifyTaskComplete(taskTitle, taskId);
+			await completeNatural();
 		} else {
 			timerState.elapsedSeconds = elapsed;
 			timerState.remainingSeconds = totalDuration - elapsed;
@@ -173,18 +160,16 @@ export async function pauseTimer() {
 }
 
 /**
- * Mark the current task as completed.
+ * Internal logic to mark task completed in DB and state.
  */
-async function complete() {
+async function markCompletedInternal(completedAt = new Date()) {
 	stopInterval();
 	releaseWakeLock();
 
-	const completedAt = new Date();
 	timerState.elapsedSeconds = timerState.totalDuration;
 	timerState.remainingSeconds = 0;
 	timerState.status = 'completed';
 	timerState.completedAt = completedAt;
-	timerState.justFinished = true;
 
 	await persistProgress({
 		status: 'completed',
@@ -192,7 +177,14 @@ async function complete() {
 		completedAt,
 		lastResumedAt: undefined
 	});
+}
 
+/**
+ * Invoked when timer countdown naturally hits zero.
+ */
+async function completeNatural(completedAt = new Date()) {
+	await markCompletedInternal(completedAt);
+	timerState.justFinished = true;
 	startAlarm();
 	notifyTaskComplete(timerState.taskTitle, timerState.taskId);
 }
@@ -205,6 +197,7 @@ export async function addExtraTime(additionalSeconds: number) {
 	if (additionalSeconds <= 0) return;
 	stopInterval();
 	stopAlarm();
+	await dismissTaskNotification();
 
 	timerState.totalDuration += additionalSeconds;
 	timerState.remainingSeconds += additionalSeconds;
@@ -224,11 +217,13 @@ export async function addExtraTime(additionalSeconds: number) {
 }
 
 /**
- * Manually complete the task (user decides to move on).
+ * Manually complete the task (user decides to move on from UI or modal).
  */
 export async function completeTask() {
 	stopAlarm();
-	await complete();
+	timerState.justFinished = false;
+	await dismissTaskNotification();
+	await markCompletedInternal();
 }
 
 /**

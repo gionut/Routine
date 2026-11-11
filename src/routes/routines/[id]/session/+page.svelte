@@ -28,7 +28,7 @@
 	import { updateTask } from '$lib/db/tasks';
 	import { openTaskLink, describeLinkType } from '$lib/utils/links';
 	import { formatTime, formatDuration } from '$lib/utils/time';
-	import { notifyRoutineComplete } from '$lib/utils/notifications';
+	import { notifyRoutineComplete, dismissTaskNotification } from '$lib/utils/notifications';
 	import type { Routine, Task, RoutineSession, TaskProgress } from '$lib/db/types';
 
 	interface TaskWithProgress {
@@ -241,6 +241,7 @@
 
 	async function confirmCompleteTask() {
 		stopAlarm();
+		await dismissTaskNotification();
 		showCompletionModal = false;
 		if (activeTaskIndex >= 0 && taskItems[activeTaskIndex]) {
 			const currentItem = taskItems[activeTaskIndex];
@@ -252,6 +253,7 @@
 		}
 
 		await completeTask();
+		clearJustFinished();
 		await refreshTaskList();
 
 		// Look for next pending task
@@ -300,6 +302,12 @@
 	async function handleOpenLink() {
 		if (activeTaskIndex >= 0) {
 			const task = taskItems[activeTaskIndex].task;
+			if (timer.status === 'idle' || timer.status === 'paused') {
+				await resumeTimer();
+				if (taskItems[activeTaskIndex]) {
+					taskItems[activeTaskIndex].progress.status = 'running';
+				}
+			}
 			await openTaskLink(task);
 		}
 	}
@@ -600,12 +608,14 @@
 			onclick={(e) => {
 				if (e.target === e.currentTarget) {
 					stopAlarm();
+					dismissTaskNotification();
 					showCompletionModal = false;
 				}
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
 					stopAlarm();
+					dismissTaskNotification();
 					showCompletionModal = false;
 				}
 			}}
@@ -665,7 +675,7 @@
 
 				<!-- Actions -->
 				<div class="dialog-actions">
-					<button class="btn-subtle" onclick={() => { stopAlarm(); showCompletionModal = false; }}>
+					<button class="btn-subtle" onclick={() => { stopAlarm(); dismissTaskNotification(); showCompletionModal = false; }}>
 						Dismiss
 					</button>
 					<button class="btn-filled-primary" onclick={confirmCompleteTask}>

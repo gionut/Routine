@@ -5,6 +5,8 @@ interface ExtendedNotificationOptions extends NotificationOptions {
 	actions?: Array<{ action: string; title: string; icon?: string }>;
 }
 
+let activeNotification: Notification | null = null;
+
 /**
  * Requests notification permission from the user.
  * Returns true if permission is granted.
@@ -16,6 +18,32 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 	const result = await Notification.requestPermission();
 	return result === 'granted';
+}
+
+/**
+ * Dismisses/closes any active task completion notification from the notification tray.
+ */
+export async function dismissTaskNotification(): Promise<void> {
+	if (typeof window === 'undefined') return;
+
+	if (activeNotification) {
+		try {
+			activeNotification.close();
+		} catch {}
+		activeNotification = null;
+	}
+
+	if ('serviceWorker' in navigator) {
+		try {
+			const reg = await navigator.serviceWorker.ready;
+			const notifications = await reg.getNotifications({ tag: 'task-complete' });
+			for (const notification of notifications) {
+				notification.close();
+			}
+		} catch (e) {
+			console.warn('Failed to dismiss SW notification:', e);
+		}
+	}
 }
 
 /**
@@ -53,7 +81,14 @@ export async function notifyTaskComplete(taskTitle: string, taskId?: number | nu
 		}
 	}
 
-	new Notification('Task Complete! ⏱️', options);
+	try {
+		activeNotification = new Notification('Task Complete! ⏱️', options);
+		activeNotification.onclose = () => {
+			activeNotification = null;
+		};
+	} catch (e) {
+		console.warn('Fallback Notification failed:', e);
+	}
 }
 
 /**
